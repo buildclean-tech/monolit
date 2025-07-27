@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title th:text="${isNew} ? 'Create SSH Server Configuration' : 'Edit SSH Server Configuration'">SSH Server Configuration</title>
+</head>
+<body>
+    <div th:replace="~{layout :: body(content=~{::content}, pageTitle=${isNew} ? 'Create SSH Server Configuration' : 'Edit SSH Server Configuration', title=${isNew} ? 'Create SSH Server Configuration' : 'Edit SSH Server Configuration')}">
+        <div th:fragment="content">
+            
+            <div class="card">
+                <div class="card-body">
+                    <form th:action="@{${isNew ? '/ssh-configs' : '/ssh-configs/' + config.id}}" 
+                          th:object="${config}" 
+                          method="post" 
+                          class="needs-validation" 
+                          novalidate>
+                        
+                        <!-- Hidden ID field for edit mode -->
+                        <input type="hidden" th:if="${!isNew}" th:field="*{id}" />
+                        
+                        <!-- Server Host -->
+                        <div class="mb-3">
+                            <label for="serverHost" class="form-label">Server Host</label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   th:classappend="${#fields.hasErrors('serverHost')} ? 'is-invalid'" 
+                                   id="serverHost" 
+                                   th:field="*{serverHost}" 
+                                   placeholder="Enter server hostname or IP address" 
+                                   required>
+                            <div class="invalid-feedback" th:if="${#fields.hasErrors('serverHost')}" th:errors="*{serverHost}">
+                                Please provide a valid server host.
+                            </div>
+                            <div class="form-text">The hostname or IP address of the SSH server.</div>
+                        </div>
+                        
+                        <!-- Port -->
+                        <div class="mb-3">
+                            <label for="port" class="form-label">Port</label>
+                            <input type="number" 
+                                   class="form-control" 
+                                   th:classappend="${#fields.hasErrors('port')} ? 'is-invalid'" 
+                                   id="port" 
+                                   th:field="*{port}" 
+                                   min="1" 
+                                   max="65535" 
+                                   placeholder="Enter port number" 
+                                   required>
+                            <div class="invalid-feedback" th:if="${#fields.hasErrors('port')}" th:errors="*{port}">
+                                Please provide a valid port number (1-65535).
+                            </div>
+                            <div class="form-text">The port number of the SSH server (default: 22).</div>
+                        </div>
+                        
+                        <!-- Password -->
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" 
+                                   class="form-control" 
+                                   th:classappend="${#fields.hasErrors('password')} ? 'is-invalid'" 
+                                   id="password" 
+                                   th:field="*{password}" 
+                                   placeholder="Enter password" 
+                                   required>
+                            <div class="invalid-feedback" th:if="${#fields.hasErrors('password')}" th:errors="*{password}">
+                                Please provide a valid password.
+                            </div>
+                            <div class="form-text">The password for the SSH server.</div>
+                        </div>
+                        
+                        <!-- Form buttons -->
+                        <div class="d-flex justify-content-between">
+                            <a th:href="@{/ssh-configs}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">
+                                <span th:text="${isNew} ? 'Create' : 'Update'">Submit</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+    
+    <!-- Form validation script -->
+    <script>
+        // Example starter JavaScript for disabling form submissions if there are invalid fields
+        (function() {
+            'use strict';
+            window.addEventListener('load', function() {
+                // Fetch all the forms we want to apply custom Bootstrap validation styles to
+                var forms = document.getElementsByClassName('needs-validation');
+                // Loop over them and prevent submission
+                var validation = Array.prototype.filter.call(forms, function(form) {
+                    form.addEventListener('submit', function(event) {
+                        if (form.checkValidity() === false) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                        }
+                        form.classList.add('was-validated');
+                    }, false);
+                });
+            }, false);
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>SSH Server Configurations</title>
+</head>
+<body>
+    <div th:replace="~{layout :: body(content=~{::content}, pageTitle='SSH Server Configurations', title='SSH Server Configurations')}">
+        <div th:fragment="content">
+            
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <p class="text-muted">Manage your SSH server configurations</p>
+                <a th:href="@{/ssh-configs/new}" class="btn btn-primary">
+                    <i class="bi bi-plus-circle"></i> Add New Configuration
+                </a>
+            </div>
+            
+            <div class="card">
+                <div class="card-body">
+                    <div th:if="${configs.isEmpty()}" class="alert alert-info">
+                        No SSH server configurations found. Click "Add New Configuration" to create one.
+                    </div>
+                    
+                    <div th:unless="${configs.isEmpty()}" class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Server Host</th>
+                                    <th>Port</th>
+                                    <th>Created</th>
+                                    <th>Last Updated</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr th:each="config : ${configs}">
+                                    <td th:text="${config.id}">1</td>
+                                    <td th:text="${config.serverHost}">localhost</td>
+                                    <td th:text="${config.port}">22</td>
+                                    <td th:text="${#temporals.format(config.createdAt, 'yyyy-MM-dd HH:mm')}">2025-07-27 13:00</td>
+                                    <td th:text="${config.updatedAt != null ? #temporals.format(config.updatedAt, 'yyyy-MM-dd HH:mm') : 'Never'}">Never</td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <a th:href="@{/ssh-configs/{id}/edit(id=${config.id})}" class="btn btn-sm btn-outline-primary">
+                                                <i class="bi bi-pencil"></i> Edit
+                                            </a>
+                                            <a th:href="@{/ssh-configs/{id}/delete(id=${config.id})}" class="btn btn-sm btn-outline-danger">
+                                                <i class="bi bi-trash"></i> Delete
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+</body>
+</html>

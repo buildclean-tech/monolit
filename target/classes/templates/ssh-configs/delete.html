@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Delete SSH Server Configuration</title>
+</head>
+<body>
+    <div th:replace="~{layout :: body(content=~{::content}, pageTitle='Delete SSH Server Configuration', title='Delete SSH Server Configuration')}">
+        <div th:fragment="content">
+            
+            <div class="card">
+                <div class="card-body">
+                    <div class="alert alert-danger">
+                        <h4 class="alert-heading">Warning!</h4>
+                        <p>You are about to delete the following SSH server configuration. This action cannot be undone.</p>
+                    </div>
+                    
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            Configuration Details
+                        </div>
+                        <div class="card-body">
+                            <table class="table table-bordered">
+                                <tr>
+                                    <th style="width: 30%">ID</th>
+                                    <td th:text="${config.id}">1</td>
+                                </tr>
+                                <tr>
+                                    <th>Server Host</th>
+                                    <td th:text="${config.serverHost}">localhost</td>
+                                </tr>
+                                <tr>
+                                    <th>Port</th>
+                                    <td th:text="${config.port}">22</td>
+                                </tr>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <form th:action="@{/ssh-configs/{id}/delete(id=${config.id})}" method="post">
+                        <div class="d-flex justify-content-between">
+                            <a th:href="@{/ssh-configs}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-danger">
+                                <i class="bi bi-trash"></i> Confirm Delete
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+</body>
+</html>

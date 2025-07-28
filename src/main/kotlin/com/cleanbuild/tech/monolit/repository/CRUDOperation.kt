@@ -2,21 +2,21 @@ package com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository
 
 import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.PrimaryKey
 import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.SqlTable
-import java.sql.PreparedStatement
 import javax.sql.DataSource
-import kotlin.reflect.KProperty1
+import kotlin.reflect.KClass
 import kotlin.reflect.full.memberProperties
+import kotlin.reflect.full.primaryConstructor
 import kotlin.use
 
 
-open class CRUDOperation<T>(private val dataSource: DataSource) {
+open class CRUDOperation<T:Any>(private val dataSource: DataSource, private val kClass: KClass<T>) {
 
     fun insert(records: List<T>): List<T> {
 
         if(records.isEmpty())
             return emptyList()
 
-        val tableName = records.first()!!::class.annotations
+        val tableName = records.first()::class.annotations
             .filterIsInstance<SqlTable>() // Filter for @SqlTable annotations
             .firstOrNull()?.tableName     // Extract the table name property
             ?: throw IllegalArgumentException("Entity class must be annotated with @SqlTable")
@@ -56,7 +56,7 @@ open class CRUDOperation<T>(private val dataSource: DataSource) {
         if(records.isEmpty())
             return emptyList()
 
-        val tableName = records.first()!!::class.annotations
+        val tableName = records.first()::class.annotations
             .filterIsInstance<SqlTable>() // Filter for @SqlTable annotations
             .firstOrNull()?.tableName     // Extract the table name property
             ?: throw IllegalArgumentException("Entity class must be annotated with @SqlTable")
@@ -67,8 +67,6 @@ open class CRUDOperation<T>(private val dataSource: DataSource) {
 
         if(keyMembers.size==0)
             throw IllegalStateException("Entity class must have at least one property annotated with @PrimaryKey")
-
-        val placeholders = nonKeyMembers.joinToString(", ") { "?" }
 
         // Build SQL query
         val updateQuery = "UPDATE $tableName SET ${nonKeyMembers.map { it.name }
@@ -103,7 +101,7 @@ open class CRUDOperation<T>(private val dataSource: DataSource) {
         if(records.isEmpty())
             return emptyList()
 
-        val tableName = records.first()!!::class.annotations
+        val tableName = records.first()::class.annotations
             .filterIsInstance<SqlTable>() // Filter for @SqlTable annotations
             .firstOrNull()?.tableName     // Extract the table name property
             ?: throw IllegalArgumentException("Entity class must be annotated with @SqlTable")
@@ -138,5 +136,86 @@ open class CRUDOperation<T>(private val dataSource: DataSource) {
         }
 
         return records
+    }
+
+    fun findAll(): List<T> {
+        // Get table name from annotation
+        val tableName = kClass.annotations
+            .filterIsInstance<SqlTable>()
+            .firstOrNull()?.tableName
+            ?: throw IllegalArgumentException("Entity class must be annotated with @SqlTable")
+    
+        val query = "SELECT * FROM $tableName"
+        val results = mutableListOf<T>()
+    
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(query).use { statement ->
+                val resultSet = statement.executeQuery()
+            
+                // Get constructor and properties
+                val constructor = kClass.primaryConstructor
+                    ?: throw IllegalArgumentException("Entity class must have a primary constructor")
+
+                while (resultSet.next()) {
+                    val params = constructor.parameters.associateWith { param ->
+                        val propName = param.name ?: throw IllegalArgumentException("Constructor parameter must have a name")
+                        val columnValue = resultSet.getObject(propName)
+                        columnValue
+                    }
+                
+                    val instance = constructor.callBy(params)
+                    results.add(instance)
+                }
+            }
+        }
+    
+        return results
+    }
+
+    fun findByPrimaryKey(primaryKeyValue: Any): T? {
+        // Ensure entityClass is provided
+        val clazz = kClass
+    
+        // Get table name from annotation
+        val tableName = clazz.annotations
+            .filterIsInstance<SqlTable>()
+            .firstOrNull()?.tableName
+            ?: throw IllegalArgumentException("Entity class must be annotated with @SqlTable")
+    
+        // Get primary key property
+        val keyMembers = clazz.memberProperties.filter { it.annotations.any { it is PrimaryKey } }
+    
+        if (keyMembers.isEmpty())
+            throw IllegalStateException("Entity class must have at least one property annotated with @PrimaryKey")
+    
+        if (keyMembers.size > 1)
+            throw IllegalStateException("This method only supports entities with a single primary key")
+    
+        val primaryKeyName = keyMembers.first().name
+    
+        val query = "SELECT * FROM $tableName WHERE $primaryKeyName = ?"
+    
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(query).use { statement ->
+                statement.setObject(1, primaryKeyValue)
+                val resultSet = statement.executeQuery()
+            
+                if (resultSet.next()) {
+                    // Get constructor and properties
+                    val constructor = clazz.primaryConstructor 
+                        ?: throw IllegalArgumentException("Entity class must have a primary constructor")
+                
+                    val params = constructor.parameters.associateWith { param ->
+                        val propName = param.name ?: throw IllegalArgumentException("Constructor parameter must have a name")
+                        val columnValue = resultSet.getObject(propName)
+                        columnValue
+                    }
+                
+                    return constructor.callBy(params)
+                }
+            }
+        }
+    
+        return null
     }
 }

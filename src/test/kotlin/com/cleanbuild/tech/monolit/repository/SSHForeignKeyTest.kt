@@ -40,6 +40,7 @@ class SSHForeignKeyTest {
                 name VARCHAR(255) PRIMARY KEY,
                 serverHost VARCHAR(255) NOT NULL,
                 port INT NOT NULL,
+                username VARCHAR(255) DEFAULT '',
                 password VARCHAR(255) NOT NULL,
                 createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -55,7 +56,7 @@ class SSHForeignKeyTest {
                 filePrefix VARCHAR(255) NOT NULL,
                 fileContains VARCHAR(255) NOT NULL,
                 filePostfix VARCHAR(255) NOT NULL,
-                activeFiles VARCHAR(50) NOT NULL,
+                archivedLogs BOOLEAN NOT NULL DEFAULT TRUE,
                 enabled BOOLEAN NOT NULL DEFAULT TRUE,
                 createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -94,6 +95,7 @@ class SSHForeignKeyTest {
             name = "test-config",
             serverHost = "localhost",
             port = 22,
+            username = "testuser",
             password = "password",
             createdAt = Timestamp(System.currentTimeMillis()),
             updatedAt = Timestamp(System.currentTimeMillis())
@@ -110,7 +112,7 @@ class SSHForeignKeyTest {
             filePrefix = "app",
             fileContains = "log",
             filePostfix = "txt",
-            activeFiles = "5",
+            archivedLogs = true,
             enabled = true,
             createdAt = Timestamp(System.currentTimeMillis()),
             updatedAt = Timestamp(System.currentTimeMillis())
@@ -136,7 +138,7 @@ class SSHForeignKeyTest {
             filePrefix = "app",
             fileContains = "log",
             filePostfix = "txt",
-            activeFiles = "5",
+            archivedLogs = true,
             enabled = true,
             createdAt = Timestamp(System.currentTimeMillis()),
             updatedAt = Timestamp(System.currentTimeMillis())
@@ -159,6 +161,7 @@ class SSHForeignKeyTest {
             name = "test-config",
             serverHost = "localhost",
             port = 22,
+            username = "testuser",
             password = "password",
             createdAt = Timestamp(System.currentTimeMillis()),
             updatedAt = Timestamp(System.currentTimeMillis())
@@ -175,7 +178,7 @@ class SSHForeignKeyTest {
             filePrefix = "app",
             fileContains = "log",
             filePostfix = "txt",
-            activeFiles = "5",
+            archivedLogs = true,
             enabled = true,
             createdAt = Timestamp(System.currentTimeMillis()),
             updatedAt = Timestamp(System.currentTimeMillis())

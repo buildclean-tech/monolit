@@ -167,6 +167,11 @@ class DashboardController(private val dataSource: DataSource) {
                         </div>
                         
                         <div class="form-group">
+                            <label for="username">Username:</label>
+                            <input type="text" id="username" name="username" placeholder="Leave blank for default">
+                        </div>
+                        
+                        <div class="form-group">
                             <label for="password">Password:</label>
                             <input type="password" id="password" name="password" required>
                         </div>
@@ -183,6 +188,7 @@ class DashboardController(private val dataSource: DataSource) {
                             <th>Name</th>
                             <th>Server Host</th>
                             <th>Port</th>
+                            <th>Username</th>
                             <th>Created At</th>
                             <th>Updated At</th>
                             <th>Actions</th>
@@ -195,6 +201,7 @@ class DashboardController(private val dataSource: DataSource) {
                                 <td>${config.name}</td>
                                 <td>${config.serverHost}</td>
                                 <td>${config.port}</td>
+                                <td>${config.username}</td>
                                 <td>${formatTimestamp(config.createdAt)}</td>
                                 <td>${formatTimestamp(config.updatedAt)}</td>
                                 <td>
@@ -225,6 +232,7 @@ class DashboardController(private val dataSource: DataSource) {
                             name: document.getElementById('name').value,
                             serverHost: document.getElementById('serverHost').value,
                             port: parseInt(document.getElementById('port').value),
+                            username: document.getElementById('username').value,
                             password: document.getElementById('password').value
                         };
                         
@@ -376,6 +384,7 @@ class DashboardController(private val dataSource: DataSource) {
                             document.getElementById('name').readOnly = true;
                             document.getElementById('serverHost').value = data.serverHost;
                             document.getElementById('port').value = data.port;
+                            document.getElementById('username').value = data.username;
                             document.getElementById('password').value = data.password;
                             
                             formMode.value = 'update';
@@ -401,6 +410,7 @@ class DashboardController(private val dataSource: DataSource) {
                             document.getElementById('name').readOnly = false;
                             document.getElementById('serverHost').value = data.serverHost;
                             document.getElementById('port').value = data.port;
+                            document.getElementById('username').value = data.username;
                             document.getElementById('password').value = data.password;
                             
                             formMode.value = 'create';
@@ -486,6 +496,7 @@ class DashboardController(private val dataSource: DataSource) {
             name = name,
             serverHost = config.serverHost,
             port = config.port,
+            username = config.username,
             password = config.password,
             createdAt = existingConfig.createdAt,
             updatedAt = Timestamp(System.currentTimeMillis())

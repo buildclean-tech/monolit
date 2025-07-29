@@ -10,11 +10,12 @@ data class SSHConfig (
     val name: String,
     val serverHost: String,
     val port: Int,
+    val username: String = "",
     val password: String,
     val createdAt: Timestamp = Timestamp(System.currentTimeMillis()),
     val updatedAt: Timestamp = Timestamp(System.currentTimeMillis())
 ) {
     override fun toString(): String {
-        return "SSHConfig(name=$name, serverHost='$serverHost', port=$port, createdAt=$createdAt, updatedAt=$updatedAt)"
+        return "SSHConfig(name=$name, serverHost='$serverHost', port=$port, username='$username', createdAt=$createdAt, updatedAt=$updatedAt)"
     }
 }

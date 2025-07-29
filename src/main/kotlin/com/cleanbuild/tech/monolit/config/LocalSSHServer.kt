@@ -15,45 +15,56 @@ import org.springframework.context.annotation.Configuration
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.file.Path
 
 /**
-
+ * A configurable SSH server for localhost that can be used in both production and testing environments.
  */
 @Configuration
-open class LocalSSHServer() {
+open class LocalSSHServer(
+    private val port: Int = 22,
+    private val hostKeyFilePath: String = "ssh-hostkey.ser",
+    private val password: String = "pass"
+) {
     private val logger = LoggerFactory.getLogger(LocalSSHServer::class.java)
 
     /**
-     * Starts a localhost SSH server on port 22.
-     * @return True if the server was started successfully, false otherwise
+     * Starts a localhost SSH server with the configured parameters.
+     * @return The started SSH server instance
      */
     @Bean
     open fun startServer(): SshServer {
-
-
         val sshServer = SshServer.setUpDefaultServer()
-        sshServer.port = 22
+        sshServer.port = port
 
-        val hostKeyFile = File("ssh-hostkey.ser")
+        val hostKeyFile = File(hostKeyFilePath)
         sshServer.keyPairProvider = SimpleGeneratorHostKeyProvider(hostKeyFile.toPath())
 
         sshServer.passwordAuthenticator = PasswordAuthenticator { username, password, session ->
-            return@PasswordAuthenticator password == "pass"
+            return@PasswordAuthenticator password == this.password
         }
 
-        sshServer.shellFactory = ProcessShellFactory(
-            "C:\\Program Files\\Git\\bin\\bash.exe", "--login", "-i"
-        )
+        // Set up shell factory based on OS
+        sshServer.shellFactory = if (System.getProperty("os.name").lowercase().contains("windows")) {
+            // Windows-specific shell factory
+            ProcessShellFactory(
+                "C:\\Program Files\\Git\\bin\\bash.exe", "--login", "-i"
+            )
+        } else {
+            // Unix-like shell factory
+            ProcessShellFactory(
+                "/bin/sh", "-i", "-l"
+            )
+        }
         
+        // Use custom command factory if provided, otherwise use default BashCommandFactory
         sshServer.commandFactory = BashCommandFactory()
 
         // Start the server
         sshServer.start()
         logger.info("SSH server started on localhost:${sshServer.port}")
         return sshServer
-
     }
-
 }
 
 class BashCommandFactory : CommandFactory {

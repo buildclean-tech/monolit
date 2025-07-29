@@ -45,6 +45,7 @@ class DashboardControllerTest {
         `when`(mockResultSet.getString("name")).thenReturn("test-server")
         `when`(mockResultSet.getString("serverHost")).thenReturn("example.com")
         `when`(mockResultSet.getInt("port")).thenReturn(22)
+        `when`(mockResultSet.getString("username")).thenReturn("testuser")
         `when`(mockResultSet.getString("password")).thenReturn("password123")
         
         val now = Timestamp(System.currentTimeMillis())
@@ -78,6 +79,7 @@ class DashboardControllerTest {
         `when`(mockResultSet.getString("name")).thenReturn("test-server")
         `when`(mockResultSet.getString("serverHost")).thenReturn("example.com")
         `when`(mockResultSet.getInt("port")).thenReturn(22)
+        `when`(mockResultSet.getString("username")).thenReturn("testuser")
         `when`(mockResultSet.getString("password")).thenReturn("password123")
         
         val now = Timestamp(System.currentTimeMillis())
@@ -109,6 +111,7 @@ class DashboardControllerTest {
         `when`(mockResultSet.getString("name")).thenReturn("test-server")
         `when`(mockResultSet.getString("serverHost")).thenReturn("example.com")
         `when`(mockResultSet.getInt("port")).thenReturn(22)
+        `when`(mockResultSet.getString("username")).thenReturn("testuser")
         `when`(mockResultSet.getString("password")).thenReturn("password123")
         
         val now = Timestamp(System.currentTimeMillis())

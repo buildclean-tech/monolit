@@ -1,20 +1,21 @@
 package com.cleanbuild.tech.monolit.controller
 
 import com.cleanbuild.tech.monolit.DbRecord.SSHConfig
+import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcher
 import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository.CRUDOperation
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.sql.Timestamp
-import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import javax.sql.DataSource
 
 @RestController
-@RequestMapping("/dashboard")
-class DashboardController(private val dataSource: DataSource) {
+@RequestMapping("/ssh-log-watcher")
+class SSHLogWatcherController(private val dataSource: DataSource) {
 
-    private val crudOperation = CRUDOperation<SSHConfig>(dataSource, SSHConfig::class)
+    private val crudOperation = CRUDOperation<SSHLogWatcher>(dataSource, SSHLogWatcher::class)
+    private val sshConfigCrudOperation = CRUDOperation<SSHConfig>(dataSource, SSHConfig::class)
     
     // Format timestamp for display in HTML
     private fun formatTimestamp(timestamp: Timestamp): String {
@@ -22,10 +23,16 @@ class DashboardController(private val dataSource: DataSource) {
         val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
         return localDateTime.format(formatter)
     }
+    
+    // Get all SSH config names for dropdown
+    private fun getAllSSHConfigNames(): List<String> {
+        return sshConfigCrudOperation.findAll().map { it.name }
+    }
 
     @GetMapping(produces = [MediaType.TEXT_HTML_VALUE])
     fun dashboard(): String {
-        val sshConfigs = getAllSSHConfigs()
+        val sshLogWatchers = getAllSSHLogWatchers()
+        val sshConfigNames = getAllSSHConfigNames()
         
         return """
         <!DOCTYPE html>
@@ -33,7 +40,7 @@ class DashboardController(private val dataSource: DataSource) {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>SSH Configs Dashboard</title>
+            <title>SSH Log Watcher Dashboard</title>
             <style>
                 body {
                     font-family: Arial, sans-serif;
@@ -108,7 +115,8 @@ class DashboardController(private val dataSource: DataSource) {
                 }
                 input[type="text"],
                 input[type="number"],
-                input[type="password"] {
+                input[type="password"],
+                select {
                     width: 100%;
                     padding: 8px;
                     border: 1px solid #ddd;
@@ -133,11 +141,18 @@ class DashboardController(private val dataSource: DataSource) {
                     color: #721c24;
                     border: 1px solid #f5c6cb;
                 }
+                .checkbox-container {
+                    display: flex;
+                    align-items: center;
+                }
+                .checkbox-container input[type="checkbox"] {
+                    margin-right: 10px;
+                }
             </style>
         </head>
         <body>
             <div class="container">
-                <h1>SSH Configs Dashboard</h1>
+                <h1>SSH Log Watcher Dashboard</h1>
                 
                 <div class="navigation">
                     <a href="/dashboard" class="btn">SSH Configs</a>
@@ -147,8 +162,8 @@ class DashboardController(private val dataSource: DataSource) {
                 <div id="message-container" class="hidden message"></div>
                 
                 <div class="form-container">
-                    <h2 id="form-title">Create New SSH Config</h2>
-                    <form id="ssh-form">
+                    <h2 id="form-title">Create New SSH Log Watcher</h2>
+                    <form id="ssh-log-watcher-form">
                         <input type="hidden" id="form-mode" value="create">
                         
                         <div class="form-group">
@@ -157,18 +172,48 @@ class DashboardController(private val dataSource: DataSource) {
                         </div>
                         
                         <div class="form-group">
-                            <label for="serverHost">Server Host:</label>
-                            <input type="text" id="serverHost" name="serverHost" required>
+                            <label for="sshConfigName">SSH Config Name:</label>
+                            <select id="sshConfigName" name="sshConfigName" required>
+                                <option value="">-- Select SSH Config --</option>
+                                ${sshConfigNames.joinToString("") { configName ->
+                                    """<option value="$configName">$configName</option>"""
+                                }}
+                            </select>
                         </div>
                         
                         <div class="form-group">
-                            <label for="port">Port:</label>
-                            <input type="number" id="port" name="port" value="22" required>
+                            <label for="watchDir">Watch Directory:</label>
+                            <input type="text" id="watchDir" name="watchDir" required>
                         </div>
                         
                         <div class="form-group">
-                            <label for="password">Password:</label>
-                            <input type="password" id="password" name="password" required>
+                            <label for="recurDepth">Recursion Depth:</label>
+                            <input type="number" id="recurDepth" name="recurDepth" value="1" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="filePrefix">File Prefix:</label>
+                            <input type="text" id="filePrefix" name="filePrefix" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="fileContains">File Contains:</label>
+                            <input type="text" id="fileContains" name="fileContains" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="filePostfix">File Postfix:</label>
+                            <input type="text" id="filePostfix" name="filePostfix" required>
+                        </div>
+                        
+                        <div class="form-group checkbox-container">
+                            <input type="checkbox" id="archivedLogs" name="archivedLogs" checked>
+                            <label for="archivedLogs">Archived Logs</label>
+                        </div>
+                        
+                        <div class="form-group checkbox-container">
+                            <input type="checkbox" id="enabled" name="enabled" checked>
+                            <label for="enabled">Enabled</label>
                         </div>
                         
                         <button type="submit" class="btn btn-success">Save</button>
@@ -176,31 +221,39 @@ class DashboardController(private val dataSource: DataSource) {
                     </form>
                 </div>
                 
-                <h2>SSH Configs</h2>
-                <table id="ssh-table">
+                <h2>SSH Log Watchers</h2>
+                <table id="ssh-log-watcher-table">
                     <thead>
                         <tr>
                             <th>Name</th>
-                            <th>Server Host</th>
-                            <th>Port</th>
+                            <th>SSH Config</th>
+                            <th>Watch Directory</th>
+                            <th>Recursion Depth</th>
+                            <th>File Pattern</th>
+                            <th>Archived Logs</th>
+                            <th>Enabled</th>
                             <th>Created At</th>
                             <th>Updated At</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${sshConfigs.joinToString("") { config ->
+                        ${sshLogWatchers.joinToString("") { watcher ->
                             """
-                            <tr data-id="${config.name}">
-                                <td>${config.name}</td>
-                                <td>${config.serverHost}</td>
-                                <td>${config.port}</td>
-                                <td>${formatTimestamp(config.createdAt)}</td>
-                                <td>${formatTimestamp(config.updatedAt)}</td>
+                            <tr data-id="${watcher.name}">
+                                <td>${watcher.name}</td>
+                                <td>${watcher.sshConfigName}</td>
+                                <td>${watcher.watchDir}</td>
+                                <td>${watcher.recurDepth}</td>
+                                <td>${watcher.filePrefix}*${watcher.fileContains}*${watcher.filePostfix}</td>
+                                <td>${if (watcher.archivedLogs) "Yes" else "No"}</td>
+                                <td>${if (watcher.enabled) "Yes" else "No"}</td>
+                                <td>${formatTimestamp(watcher.createdAt)}</td>
+                                <td>${formatTimestamp(watcher.updatedAt)}</td>
                                 <td>
-                                    <button class="btn edit-btn" data-id="${config.name}">Edit</button>
-                                    <button class="btn btn-success copy-btn" data-id="${config.name}">Copy</button>
-                                    <button class="btn btn-danger delete-btn" data-id="${config.name}">Delete</button>
+                                    <button class="btn edit-btn" data-id="${watcher.name}">Edit</button>
+                                    <button class="btn btn-success copy-btn" data-id="${watcher.name}">Copy</button>
+                                    <button class="btn btn-danger delete-btn" data-id="${watcher.name}">Delete</button>
                                 </td>
                             </tr>
                             """
@@ -211,7 +264,7 @@ class DashboardController(private val dataSource: DataSource) {
             
             <script>
                 document.addEventListener('DOMContentLoaded', function() {
-                    const form = document.getElementById('ssh-form');
+                    const form = document.getElementById('ssh-log-watcher-form');
                     const formMode = document.getElementById('form-mode');
                     const formTitle = document.getElementById('form-title');
                     const cancelBtn = document.getElementById('cancel-btn');
@@ -221,19 +274,24 @@ class DashboardController(private val dataSource: DataSource) {
                     form.addEventListener('submit', function(e) {
                         e.preventDefault();
                         
-                        const sshConfig = {
+                        const sshLogWatcher = {
                             name: document.getElementById('name').value,
-                            serverHost: document.getElementById('serverHost').value,
-                            port: parseInt(document.getElementById('port').value),
-                            password: document.getElementById('password').value
+                            sshConfigName: document.getElementById('sshConfigName').value,
+                            watchDir: document.getElementById('watchDir').value,
+                            recurDepth: parseInt(document.getElementById('recurDepth').value),
+                            filePrefix: document.getElementById('filePrefix').value,
+                            fileContains: document.getElementById('fileContains').value,
+                            filePostfix: document.getElementById('filePostfix').value,
+                            archivedLogs: document.getElementById('archivedLogs').checked,
+                            enabled: document.getElementById('enabled').checked
                         };
                         
                         const mode = formMode.value;
                         
                         if (mode === 'create') {
-                            createSSHConfig(sshConfig);
+                            createSSHLogWatcher(sshLogWatcher);
                         } else if (mode === 'update') {
-                            updateSSHConfig(sshConfig);
+                            updateSSHLogWatcher(sshLogWatcher);
                         }
                     });
                     
@@ -241,7 +299,7 @@ class DashboardController(private val dataSource: DataSource) {
                     document.addEventListener('click', function(e) {
                         if (e.target.classList.contains('edit-btn')) {
                             const id = e.target.getAttribute('data-id');
-                            editSSHConfig(id);
+                            editSSHLogWatcher(id);
                         }
                     });
                     
@@ -249,7 +307,7 @@ class DashboardController(private val dataSource: DataSource) {
                     document.addEventListener('click', function(e) {
                         if (e.target.classList.contains('copy-btn')) {
                             const id = e.target.getAttribute('data-id');
-                            copySSHConfig(id);
+                            copySSHLogWatcher(id);
                         }
                     });
                     
@@ -257,8 +315,8 @@ class DashboardController(private val dataSource: DataSource) {
                     document.addEventListener('click', function(e) {
                         if (e.target.classList.contains('delete-btn')) {
                             const id = e.target.getAttribute('data-id');
-                            if (confirm('Are you sure you want to delete this SSH config?')) {
-                                deleteSSHConfig(id);
+                            if (confirm('Are you sure you want to delete this SSH Log Watcher?')) {
+                                deleteSSHLogWatcher(id);
                             }
                         }
                     });
@@ -268,14 +326,14 @@ class DashboardController(private val dataSource: DataSource) {
                         resetForm();
                     });
                     
-                    // Create SSH Config
-                    function createSSHConfig(sshConfig) {
-                        fetch('/dashboard/ssh-configs', {
+                    // Create SSH Log Watcher
+                    function createSSHLogWatcher(sshLogWatcher) {
+                        fetch('/ssh-log-watcher/watchers', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
                             },
-                            body: JSON.stringify(sshConfig)
+                            body: JSON.stringify(sshLogWatcher)
                         })
                         .then(response => {
                             // Always parse the JSON, even for error responses
@@ -286,13 +344,13 @@ class DashboardController(private val dataSource: DataSource) {
                                         throw new Error(data.error);
                                     }
                                     // Otherwise use a generic error message
-                                    throw new Error('Failed to create SSH config');
+                                    throw new Error('Failed to create SSH Log Watcher');
                                 }
                                 return data;
                             });
                         })
                         .then(data => {
-                            showMessage('SSH config created successfully!', 'success');
+                            showMessage('SSH Log Watcher created successfully!', 'success');
                             resetForm();
                             window.location.reload();
                         })
@@ -301,14 +359,14 @@ class DashboardController(private val dataSource: DataSource) {
                         });
                     }
                     
-                    // Update SSH Config
-                    function updateSSHConfig(sshConfig) {
-                        fetch('/dashboard/ssh-configs/' + sshConfig.name, {
+                    // Update SSH Log Watcher
+                    function updateSSHLogWatcher(sshLogWatcher) {
+                        fetch('/ssh-log-watcher/watchers/' + sshLogWatcher.name, {
                             method: 'PUT',
                             headers: {
                                 'Content-Type': 'application/json'
                             },
-                            body: JSON.stringify(sshConfig)
+                            body: JSON.stringify(sshLogWatcher)
                         })
                         .then(response => {
                             // Always parse the JSON, even for error responses
@@ -319,13 +377,13 @@ class DashboardController(private val dataSource: DataSource) {
                                         throw new Error(data.error);
                                     }
                                     // Otherwise use a generic error message
-                                    throw new Error('Failed to update SSH config');
+                                    throw new Error('Failed to update SSH Log Watcher');
                                 }
                                 return data;
                             });
                         })
                         .then(data => {
-                            showMessage('SSH config updated successfully!', 'success');
+                            showMessage('SSH Log Watcher updated successfully!', 'success');
                             resetForm();
                             window.location.reload();
                         })
@@ -334,9 +392,9 @@ class DashboardController(private val dataSource: DataSource) {
                         });
                     }
                     
-                    // Delete SSH Config
-                    function deleteSSHConfig(id) {
-                        fetch('/dashboard/ssh-configs/' + id, {
+                    // Delete SSH Log Watcher
+                    function deleteSSHLogWatcher(id) {
+                        fetch('/ssh-log-watcher/watchers/' + id, {
                             method: 'DELETE'
                         })
                         .then(response => {
@@ -348,13 +406,13 @@ class DashboardController(private val dataSource: DataSource) {
                                         throw new Error(data.error);
                                     }
                                     // Otherwise use a generic error message
-                                    throw new Error('Failed to delete SSH config');
+                                    throw new Error('Failed to delete SSH Log Watcher');
                                 }
                                 return data;
                             });
                         })
                         .then(data => {
-                            showMessage('SSH config deleted successfully!', 'success');
+                            showMessage('SSH Log Watcher deleted successfully!', 'success');
                             window.location.reload();
                         })
                         .catch(error => {
@@ -362,24 +420,38 @@ class DashboardController(private val dataSource: DataSource) {
                         });
                     }
                     
-                    // Edit SSH Config
-                    function editSSHConfig(id) {
-                        fetch('/dashboard/ssh-configs/' + id)
+                    // Edit SSH Log Watcher
+                    function editSSHLogWatcher(id) {
+                        fetch('/ssh-log-watcher/watchers/' + id)
                         .then(response => {
                             if (!response.ok) {
-                                throw new Error('Failed to fetch SSH config');
+                                throw new Error('Failed to fetch SSH Log Watcher');
                             }
                             return response.json();
                         })
                         .then(data => {
                             document.getElementById('name').value = data.name;
                             document.getElementById('name').readOnly = true;
-                            document.getElementById('serverHost').value = data.serverHost;
-                            document.getElementById('port').value = data.port;
-                            document.getElementById('password').value = data.password;
+                            
+                            // Set the selected option in the dropdown
+                            const sshConfigSelect = document.getElementById('sshConfigName');
+                            for (let i = 0; i < sshConfigSelect.options.length; i++) {
+                                if (sshConfigSelect.options[i].value === data.sshConfigName) {
+                                    sshConfigSelect.selectedIndex = i;
+                                    break;
+                                }
+                            }
+                            
+                            document.getElementById('watchDir').value = data.watchDir;
+                            document.getElementById('recurDepth').value = data.recurDepth;
+                            document.getElementById('filePrefix').value = data.filePrefix;
+                            document.getElementById('fileContains').value = data.fileContains;
+                            document.getElementById('filePostfix').value = data.filePostfix;
+                            document.getElementById('archivedLogs').checked = data.archivedLogs;
+                            document.getElementById('enabled').checked = data.enabled;
                             
                             formMode.value = 'update';
-                            formTitle.textContent = 'Edit SSH Config';
+                            formTitle.textContent = 'Edit SSH Log Watcher';
                             cancelBtn.style.display = 'inline-block';
                         })
                         .catch(error => {
@@ -387,24 +459,41 @@ class DashboardController(private val dataSource: DataSource) {
                         });
                     }
                     
-                    // Copy SSH Config
-                    function copySSHConfig(id) {
-                        fetch('/dashboard/ssh-configs/' + id)
+                    // Copy SSH Log Watcher
+                    function copySSHLogWatcher(id) {
+                        fetch('/ssh-log-watcher/watchers/' + id)
                         .then(response => {
                             if (!response.ok) {
-                                throw new Error('Failed to fetch SSH config');
+                                throw new Error('Failed to fetch SSH Log Watcher');
                             }
                             return response.json();
                         })
                         .then(data => {
-                            document.getElementById('name').value = data.name + '-copy';
+                            // Clear the name field and keep it editable for the new name
+                            document.getElementById('name').value = '';
                             document.getElementById('name').readOnly = false;
-                            document.getElementById('serverHost').value = data.serverHost;
-                            document.getElementById('port').value = data.port;
-                            document.getElementById('password').value = data.password;
                             
+                            // Set the selected option in the dropdown
+                            const sshConfigSelect = document.getElementById('sshConfigName');
+                            for (let i = 0; i < sshConfigSelect.options.length; i++) {
+                                if (sshConfigSelect.options[i].value === data.sshConfigName) {
+                                    sshConfigSelect.selectedIndex = i;
+                                    break;
+                                }
+                            }
+                            
+                            // Copy all other fields
+                            document.getElementById('watchDir').value = data.watchDir;
+                            document.getElementById('recurDepth').value = data.recurDepth;
+                            document.getElementById('filePrefix').value = data.filePrefix;
+                            document.getElementById('fileContains').value = data.fileContains;
+                            document.getElementById('filePostfix').value = data.filePostfix;
+                            document.getElementById('archivedLogs').checked = data.archivedLogs;
+                            document.getElementById('enabled').checked = data.enabled;
+                            
+                            // Set form mode to create since we're creating a new watcher
                             formMode.value = 'create';
-                            formTitle.textContent = 'Create New SSH Config';
+                            formTitle.textContent = 'Create New SSH Log Watcher (Copied)';
                             cancelBtn.style.display = 'inline-block';
                         })
                         .catch(error => {
@@ -417,7 +506,7 @@ class DashboardController(private val dataSource: DataSource) {
                         form.reset();
                         document.getElementById('name').readOnly = false;
                         formMode.value = 'create';
-                        formTitle.textContent = 'Create New SSH Config';
+                        formTitle.textContent = 'Create New SSH Log Watcher';
                         cancelBtn.style.display = 'none';
                     }
                     
@@ -438,88 +527,93 @@ class DashboardController(private val dataSource: DataSource) {
         """.trimIndent()
     }
 
-    @GetMapping("/ssh-configs", produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun getAllSSHConfigs(): List<SSHConfig> {
+    @GetMapping("/watchers", produces = [MediaType.APPLICATION_JSON_VALUE])
+    fun getAllSSHLogWatchers(): List<SSHLogWatcher> {
         return crudOperation.findAll()
     }
 
-    @GetMapping("/ssh-configs/{name}", produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun getSSHConfig(@PathVariable name: String): ResponseEntity<SSHConfig> {
-        val config = crudOperation.findByPrimaryKey(name)
-        return if (config != null) {
-            ResponseEntity.ok(config)
+    @GetMapping("/watchers/{name}", produces = [MediaType.APPLICATION_JSON_VALUE])
+    fun getSSHLogWatcher(@PathVariable name: String): ResponseEntity<SSHLogWatcher> {
+        val watcher = crudOperation.findByPrimaryKey(name)
+        return if (watcher != null) {
+            ResponseEntity.ok(watcher)
         } else {
             ResponseEntity.notFound().build()
         }
     }
 
-    @PostMapping("/ssh-configs", produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun createSSHConfig(@RequestBody config: SSHConfig): ResponseEntity<Any> {
-        val newConfig = config.copy(
+    @PostMapping("/watchers", produces = [MediaType.APPLICATION_JSON_VALUE])
+    fun createSSHLogWatcher(@RequestBody watcher: SSHLogWatcher): ResponseEntity<Any> {
+        val newWatcher = watcher.copy(
             createdAt = Timestamp(System.currentTimeMillis()),
             updatedAt = Timestamp(System.currentTimeMillis())
         )
         try {
-            crudOperation.insert(listOf(newConfig))
-            return ResponseEntity.ok(newConfig)
+            crudOperation.insert(listOf(newWatcher))
+            return ResponseEntity.ok(newWatcher)
         } catch (e: Exception) {
             // Check if it's a unique constraint violation (error code 23505)
             if (e.cause?.message?.contains("Unique index or primary key violation") == true || 
                 e.message?.contains("Unique index or primary key violation") == true) {
-                return ResponseEntity.badRequest().body(mapOf("error" to "A configuration with the name '${config.name}' already exists. Please use a different name."))
+                return ResponseEntity.badRequest().body(mapOf("error" to "A watcher with the name '${watcher.name}' already exists. Please use a different name."))
             }
             // For other exceptions, rethrow
             throw e
         }
     }
 
-    @PutMapping("/ssh-configs/{name}", produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun updateSSHConfig(@PathVariable name: String, @RequestBody config: SSHConfig): ResponseEntity<Any> {
-        // First, get the existing config to preserve createdAt
-        val existingConfig = crudOperation.findByPrimaryKey(name)
+    @PutMapping("/watchers/{name}", produces = [MediaType.APPLICATION_JSON_VALUE])
+    fun updateSSHLogWatcher(@PathVariable name: String, @RequestBody watcher: SSHLogWatcher): ResponseEntity<Any> {
+        // First, get the existing watcher to preserve createdAt
+        val existingWatcher = crudOperation.findByPrimaryKey(name)
         
-        if (existingConfig == null) {
+        if (existingWatcher == null) {
             return ResponseEntity.notFound().build()
         }
         
-        val updatedConfig = SSHConfig(
+        val updatedWatcher = SSHLogWatcher(
             name = name,
-            serverHost = config.serverHost,
-            port = config.port,
-            password = config.password,
-            createdAt = existingConfig.createdAt,
+            sshConfigName = watcher.sshConfigName,
+            watchDir = watcher.watchDir,
+            recurDepth = watcher.recurDepth,
+            filePrefix = watcher.filePrefix,
+            fileContains = watcher.fileContains,
+            filePostfix = watcher.filePostfix,
+            archivedLogs = watcher.archivedLogs,
+            enabled = watcher.enabled,
+            createdAt = existingWatcher.createdAt,
             updatedAt = Timestamp(System.currentTimeMillis())
         )
         
         try {
-            crudOperation.update(listOf(updatedConfig))
-            return ResponseEntity.ok(updatedConfig)
+            crudOperation.update(listOf(updatedWatcher))
+            return ResponseEntity.ok(updatedWatcher)
         } catch (e: Exception) {
             // Check if it's a unique constraint violation (error code 23505)
             if (e.cause?.message?.contains("Unique index or primary key violation") == true || 
                 e.message?.contains("Unique index or primary key violation") == true) {
-                return ResponseEntity.badRequest().body(mapOf("error" to "A configuration with the name '${config.name}' already exists. Please use a different name."))
+                return ResponseEntity.badRequest().body(mapOf("error" to "A watcher with the name '${watcher.name}' already exists. Please use a different name."))
             }
             // For other exceptions, return a meaningful error message
-            return ResponseEntity.badRequest().body(mapOf("error" to "Failed to update SSH config: ${e.message}"))
+            return ResponseEntity.badRequest().body(mapOf("error" to "Failed to update SSH Log Watcher: ${e.message}"))
         }
     }
 
-    @DeleteMapping("/ssh-configs/{name}", produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun deleteSSHConfig(@PathVariable name: String): ResponseEntity<Any> {
-        // First, get the existing config
-        val existingConfig = crudOperation.findByPrimaryKey(name)
+    @DeleteMapping("/watchers/{name}", produces = [MediaType.APPLICATION_JSON_VALUE])
+    fun deleteSSHLogWatcher(@PathVariable name: String): ResponseEntity<Any> {
+        // First, get the existing watcher
+        val existingWatcher = crudOperation.findByPrimaryKey(name)
         
-        if (existingConfig == null) {
+        if (existingWatcher == null) {
             return ResponseEntity.notFound().build()
         }
         
         try {
-            crudOperation.delete(listOf(existingConfig))
+            crudOperation.delete(listOf(existingWatcher))
             return ResponseEntity.ok(mapOf("deleted" to true))
         } catch (e: Exception) {
             // For exceptions, return a meaningful error message
-            return ResponseEntity.badRequest().body(mapOf("error" to "Failed to delete SSH config: ${e.message}"))
+            return ResponseEntity.badRequest().body(mapOf("error" to "Failed to delete SSH Log Watcher: ${e.message}"))
         }
     }
 }

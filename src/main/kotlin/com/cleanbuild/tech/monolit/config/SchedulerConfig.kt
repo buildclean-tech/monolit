@@ -11,7 +11,7 @@ import org.springframework.scheduling.annotation.Scheduled
  */
 @Configuration
 @EnableScheduling
-class SchedulerConfig(
+open class SchedulerConfig(
     private val sshLogWatcherService: SSHLogWatcherService
 ) {
     private val logger = LoggerFactory.getLogger(SchedulerConfig::class.java)
@@ -20,8 +20,8 @@ class SchedulerConfig(
      * Schedule the SSH log watcher processing to run every 15 minutes
      * fixedRate = 15 minutes in milliseconds
      */
-    @Scheduled(fixedRate = 15 * 60 * 1000)
-    fun runSSHLogWatcherProcessing() {
+    @Scheduled(fixedRate = 15*60*1000)
+    open fun runSSHLogWatcherProcessing() {
         logger.info("Scheduled SSH log watcher processing started")
         try {
             sshLogWatcherService.processLogWatchers()

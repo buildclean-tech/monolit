@@ -305,4 +305,84 @@ class SSHCommandRunnerTest {
             assertEquals("", it.bufferedReader().use { it.readText() }, "Should return empty content for nonexistent file")
         }
     }
+    
+    @Test
+    fun `findFiles should include error details in exception message`() {
+        // Arrange
+        val nonexistentDir = "/nonexistent/directory"
+    
+        // Act & Assert
+        val exception = org.junit.jupiter.api.assertThrows<IOException> {
+            sshCommandRunner.findFiles(
+                sshConfig = testConfig,
+                directory = nonexistentDir,
+                pattern = "*.txt",
+                maxDepth = 1
+            )
+        }
+    
+        // Verify the exception message contains error information
+        assertTrue(exception.message?.contains("Command execution failed with exit status") == true,
+                  "Exception should indicate command execution failure with exit status")
+    
+        // Verify the exception message contains the error stream output
+        // The exact error message may vary depending on the SSH server implementation,
+        // but it should contain some indication that the directory doesn't exist
+        assertTrue(exception.message?.contains("No such file or directory") == true || 
+                  exception.message?.contains("cannot access") == true ||
+                  exception.message?.contains("not found") == true,
+                  "Exception should include error details from error stream")
+    }
+
+    @Test
+    fun `findFiles should correctly detect changes to file ctime`() {
+        // Arrange
+        val testDirPath = toUnixPath(testDir)
+        val testFileName = "ctime_test_file.txt"
+        val testFilePath = testDir.resolve(testFileName)
+    
+        // Create a test file
+        Files.write(testFilePath, "Initial content".toByteArray())
+    
+        // Act - Get initial metadata
+        val initialFiles = sshCommandRunner.findFiles(
+            sshConfig = testConfig,
+            directory = testDirPath,
+            pattern = testFileName,
+            maxDepth = 1
+        )
+    
+        // Verify file was found
+        assertEquals(1, initialFiles.size, "Should find exactly 1 file")
+        val initialFile = initialFiles.first()
+        assertEquals(testFileName, initialFile.filename, "Filename should match")
+        val initialCtime = initialFile.ctime
+    
+        // Wait a moment to ensure timestamp will be different
+        Thread.sleep(1000)
+    
+        // Modify the file to trigger a ctime change
+        Files.write(testFilePath, "Modified content".toByteArray())
+    
+        // Act - Get updated metadata
+        val updatedFiles = sshCommandRunner.findFiles(
+            sshConfig = testConfig,
+            directory = testDirPath,
+            pattern = testFileName,
+            maxDepth = 1
+        )
+    
+        // Verify file was found
+        assertEquals(1, updatedFiles.size, "Should find exactly 1 file")
+        val updatedFile = updatedFiles.first()
+        assertEquals(testFileName, updatedFile.filename, "Filename should match")
+        val updatedCtime = updatedFile.ctime
+    
+        // Assert - ctime should have changed
+        assertTrue(updatedCtime > initialCtime, 
+            "The ctime should increase after file modification (initial: $initialCtime, updated: $updatedCtime)")
+    
+        // Clean up
+        Files.deleteIfExists(testFilePath)
+    }
 }

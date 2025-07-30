@@ -89,7 +89,7 @@ class SSHCommandRunner(private val sshSessionFactory: SSHSessionFactory) {
                     if (parts.size >= 4) {
                         FileMetadata(
                             size = parts[0].toLongOrNull() ?: 0,
-                            ctime = parts[1].toDoubleOrNull()?.toLong() ?: 0,
+                            ctime = (parts[1].toDoubleOrNull()?.toLong() ?: 0)*1000L,
                             filename = parts[2],
                             filepath = parts[3]
                         )
@@ -174,12 +174,20 @@ class SSHCommandRunner(private val sshSessionFactory: SSHSessionFactory) {
             
             // Read the command output
             val outputStream = channel.getInvertedOut()
+            val errorStream = channel.getInvertedErr()
             val buffer = ByteArray(8192)
             val output = StringBuilder()
+            val errorOutput = StringBuilder()
             
+            // Read standard output
             var bytesRead: Int
             while (outputStream.read(buffer).also { bytesRead = it } != -1) {
                 output.append(String(buffer, 0, bytesRead))
+            }
+            
+            // Read error output
+            while (errorStream.read(buffer).also { bytesRead = it } != -1) {
+                errorOutput.append(String(buffer, 0, bytesRead))
             }
             
             // Wait for command to complete
@@ -193,7 +201,9 @@ class SSHCommandRunner(private val sshSessionFactory: SSHSessionFactory) {
             // Check exit status
             val exitStatus = channel.exitStatus
             if (exitStatus != null && exitStatus != 0) {
-                throw IOException("Command execution failed with exit status $exitStatus: $command")
+                val errorMsg = errorOutput.toString().trim()
+                val errorDetails = if (errorMsg.isNotEmpty()) ": $errorMsg" else ""
+                throw IOException("Command execution failed with exit status $exitStatus: $command$errorDetails")
             }
             
             // Close the channel

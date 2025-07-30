@@ -39,17 +39,42 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter</artifactId>
             <version>${spring.boot.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-logging</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
             <version>${spring.boot.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-logging</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
+            <version>${spring.boot.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-starter-logging</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- Log4j2 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-log4j2</artifactId>
             <version>${spring.boot.version}</version>
         </dependency>
 
@@ -65,7 +90,7 @@
             <artifactId>jackson-datatype-jsr310</artifactId>
             <version>2.15.2</version> <!-- Use the same version as Jackson -->
         </dependency>
-        
+
         <!-- HikariCP -->
         <dependency>
             <groupId>com.zaxxer</groupId>
@@ -103,7 +128,7 @@
             <artifactId>lucene-core</artifactId>
             <version>${lucene.version}</version>
         </dependency>
-        
+
         <!-- Thymeleaf -->
         <dependency>
             <groupId>org.thymeleaf</groupId>
@@ -115,7 +140,7 @@
             <artifactId>thymeleaf-spring6</artifactId>
             <version>3.1.2.RELEASE</version>
         </dependency>
-        
+
         <!-- Validation -->
         <dependency>
             <groupId>org.hibernate.validator</groupId>
@@ -127,14 +152,14 @@
             <artifactId>jakarta.validation-api</artifactId>
             <version>3.0.2</version>
         </dependency>
-        
+
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-test</artifactId>
             <version>${kotlin.version}</version>
             <scope>test</scope>
         </dependency>
-        
+
         <!-- Testing Dependencies -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

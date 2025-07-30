@@ -3,8 +3,10 @@ package com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository
 import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.Generated
 import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.PrimaryKey
 import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.SqlTable
+import java.io.Serializable
 import javax.sql.DataSource
 import kotlin.reflect.KClass
+import kotlin.reflect.KProperty1
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.full.primaryConstructor
 import kotlin.use
@@ -221,5 +223,51 @@ open class CRUDOperation<T:Any>(private val dataSource: DataSource, private val 
         }
     
         return null
+    }
+    
+    fun <R> findByColumnValues(whereColumns: Map<KProperty1<T, R>, Any>): List<T> where R : Comparable<*>, R : Serializable {
+        if (whereColumns.isEmpty()) {
+            return findAll()
+        }
+        
+        // Get table name from annotation
+        val tableName = kClass.annotations
+            .filterIsInstance<SqlTable>()
+            .firstOrNull()?.tableName
+            ?: throw IllegalArgumentException("Entity class must be annotated with @SqlTable")
+        
+        // Build WHERE clause from the provided column-value map
+        val whereClause = whereColumns.keys.joinToString(" AND ") { "${it.name} = ?" }
+        val query = "SELECT * FROM $tableName WHERE $whereClause"
+        
+        val results = mutableListOf<T>()
+        
+        dataSource.connection.use { connection ->
+            connection.prepareStatement(query).use { statement ->
+                // Set parameter values for the WHERE clause
+                whereColumns.entries.forEachIndexed { index, entry ->
+                    statement.setObject(index + 1, entry.value)
+                }
+                
+                val resultSet = statement.executeQuery()
+                
+                // Get constructor and properties
+                val constructor = kClass.primaryConstructor
+                    ?: throw IllegalArgumentException("Entity class must have a primary constructor")
+                
+                while (resultSet.next()) {
+                    val params = constructor.parameters.associateWith { param ->
+                        val propName = param.name ?: throw IllegalArgumentException("Constructor parameter must have a name")
+                        val columnValue = resultSet.getObject(propName)
+                        columnValue
+                    }
+                    
+                    val instance = constructor.callBy(params)
+                    results.add(instance)
+                }
+            }
+        }
+        
+        return results
     }
 }

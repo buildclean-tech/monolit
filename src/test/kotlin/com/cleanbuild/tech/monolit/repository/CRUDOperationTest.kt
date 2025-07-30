@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test
 import java.sql.Connection
 import java.sql.Timestamp
 import kotlin.reflect.KClass
+import kotlin.reflect.KProperty1
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -519,6 +520,158 @@ class CRUDOperationTest {
         // Clean up
         connection.createStatement().use { statement ->
             statement.execute("DROP TABLE IF EXISTS EntityWithGeneratedField")
+        }
+    }
+    
+    /**
+     * Tests the findByColumnValues() method for successful retrieval of records with a single column condition.
+     * 
+     * This test:
+     * 1. Inserts multiple test entities with different values
+     * 2. Calls the findByColumnValues() method with a single column-value pair
+     * 3. Verifies that only the entities matching the criteria are returned
+     */
+    @Test
+    fun testFindByColumnValuesSingleCondition() {
+        // Create and insert test entities
+        val testEntities = listOf(
+            TestEntity(id = 1, name = "Apple", itemValue = 10.5, createdAt = Timestamp(System.currentTimeMillis())),
+            TestEntity(id = 2, name = "Banana", itemValue = 20.5, createdAt = Timestamp(System.currentTimeMillis())),
+            TestEntity(id = 3, name = "Apple", itemValue = 30.5, createdAt = Timestamp(System.currentTimeMillis()))
+        )
+        
+        crudOperation.insert(testEntities)
+        
+        // Call findByColumnValues() with a single condition (name = "Apple")
+        val whereColumns = mapOf(
+            TestEntity::name to "Apple"
+        )
+        val results = crudOperation.findByColumnValues(whereColumns)
+        
+        // Verify results
+        assertEquals(2, results.size, "Should return 2 entities with name 'Apple'")
+        
+        // Verify each entity was retrieved correctly
+        for (result in results) {
+            assertEquals("Apple", result.name, "Name should be 'Apple'")
+            assertTrue(result.id in listOf(1, 3), "ID should be either 1 or 3")
+        }
+    }
+    
+    /**
+     * Tests the findByColumnValues() method for successful retrieval of records with multiple column conditions.
+     * 
+     * This test:
+     * 1. Inserts multiple test entities with different values
+     * 2. Calls the findByColumnValues() method with multiple column-value pairs
+     * 3. Verifies that only the entities matching all criteria are returned
+     */
+    @Test
+    fun testFindByColumnValuesMultipleConditions() {
+        // Create and insert test entities
+        val testEntities = listOf(
+            TestEntity(id = 1, name = "Apple", itemValue = 10.5, createdAt = Timestamp(System.currentTimeMillis())),
+            TestEntity(id = 2, name = "Banana", itemValue = 20.5, createdAt = Timestamp(System.currentTimeMillis())),
+            TestEntity(id = 3, name = "Apple", itemValue = 30.5, createdAt = Timestamp(System.currentTimeMillis()))
+        )
+        
+        crudOperation.insert(testEntities)
+        
+        // Call findByColumnValues() with multiple conditions (name = "Apple" AND itemValue = 30.5)
+        val whereColumns = mapOf(
+            TestEntity::name  to "Apple",
+            TestEntity::itemValue to 30.5 as Any
+        )
+
+        val results = crudOperation.findByColumnValues(whereColumns)
+        
+        // Verify results
+        assertEquals(1, results.size, "Should return 1 entity matching both conditions")
+        
+        // Verify the entity was retrieved correctly
+        val result = results.first()
+        assertEquals("Apple", result.name, "Name should be 'Apple'")
+        assertEquals(30.5, result.itemValue, 0.001, "Item value should be 30.5")
+        assertEquals(3, result.id, "ID should be 3")
+    }
+    
+    /**
+     * Tests the findByColumnValues() method with an empty whereColumns map.
+     * 
+     * This test:
+     * 1. Inserts multiple test entities
+     * 2. Calls the findByColumnValues() method with an empty map
+     * 3. Verifies that all entities are returned (same as findAll())
+     */
+    @Test
+    fun testFindByColumnValuesEmptyConditions() {
+        // Create and insert test entities
+        val testEntities = listOf(
+            TestEntity(id = 1, name = "Apple", itemValue = 10.5, createdAt = Timestamp(System.currentTimeMillis())),
+            TestEntity(id = 2, name = "Banana", itemValue = 20.5, createdAt = Timestamp(System.currentTimeMillis())),
+            TestEntity(id = 3, name = "Cherry", itemValue = 30.5, createdAt = Timestamp(System.currentTimeMillis()))
+        )
+        
+        crudOperation.insert(testEntities)
+        
+        // Call findByColumnValues() with empty conditions
+        val results = crudOperation.findByColumnValues(mapOf<KProperty1<TestEntity, String>, Int>())
+        
+        // Verify results
+        assertEquals(testEntities.size, results.size, "Should return all entities when conditions are empty")
+        
+        // Verify all entities were retrieved
+        val resultIds = results.map { it.id }.toSet()
+        val expectedIds = testEntities.map { it.id }.toSet()
+        assertEquals(expectedIds, resultIds, "Retrieved entity IDs should match all inserted entity IDs")
+    }
+    
+    /**
+     * Tests the findByColumnValues() method with non-existent column values.
+     * 
+     * This test:
+     * 1. Inserts multiple test entities
+     * 2. Calls the findByColumnValues() method with a column value that doesn't exist
+     * 3. Verifies that an empty list is returned
+     */
+    @Test
+    fun testFindByColumnValuesNonExistentValues() {
+        // Create and insert test entities
+        val testEntities = listOf(
+            TestEntity(id = 1, name = "Apple", itemValue = 10.5, createdAt = Timestamp(System.currentTimeMillis())),
+            TestEntity(id = 2, name = "Banana", itemValue = 20.5, createdAt = Timestamp(System.currentTimeMillis())),
+            TestEntity(id = 3, name = "Cherry", itemValue = 30.5, createdAt = Timestamp(System.currentTimeMillis()))
+        )
+        
+        crudOperation.insert(testEntities)
+        
+        // Call findByColumnValues() with a non-existent value
+        val whereColumns = mapOf(
+            TestEntity::name to "NonExistentName"
+        )
+        val results = crudOperation.findByColumnValues(whereColumns)
+        
+        // Verify results
+        assertTrue(results.isEmpty(), "Should return empty list for non-existent values")
+    }
+    
+    /**
+     * Tests the findByColumnValues() method with an invalid entity class that doesn't have the @SqlTable annotation.
+     * 
+     * This test:
+     * 1. Creates an invalid entity class without the @SqlTable annotation
+     * 2. Attempts to call the findByColumnValues() method with this entity class
+     * 3. Verifies that an IllegalArgumentException is thrown
+     */
+    @Test
+    fun testFindByColumnValuesWithInvalidEntity() {
+        // Test with entity that doesn't have @SqlTable annotation
+        class InvalidEntity(val id: Int, val name: String)
+        
+        // This should throw an IllegalArgumentException
+        assertFailsWith<IllegalArgumentException>("Should throw exception for entity without @SqlTable annotation") {
+            val invalidCrudOperation = CRUDOperation<InvalidEntity>(dataSource, InvalidEntity::class)
+            invalidCrudOperation.findByColumnValues(mapOf(InvalidEntity::name to "Test"))
         }
     }
 }

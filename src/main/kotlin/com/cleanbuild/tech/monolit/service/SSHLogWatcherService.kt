@@ -130,7 +130,7 @@ class SSHLogWatcherService(
         val fileHash = calculateFileHash(file.filename, file.size, file.ctime)
         
         // Check for duplicates based on hash
-        val duplicateRecords = sshLogWatcherRecordCrud.findAll()
+        val duplicateRecords = sshLogWatcherRecordCrud.findByColumnValues(mapOf(SSHLogWatcherRecord::fileHash to fileHash))
             .filter { it.fileHash == fileHash && it.sshLogWatcherName == watcher.name && it.fullFilePath != fullPath }
         
         val duplicatedFile = if (duplicateRecords.isNotEmpty()) {

@@ -11,7 +11,7 @@ import java.sql.Timestamp
 data class TestEntity(
     @PrimaryKey
     val id: Int,
-    var name: String,
-    var itemValue: Double,
+    val name: String,
+    val itemValue: Double,
     val createdAt: Timestamp = Timestamp(System.currentTimeMillis())
 )

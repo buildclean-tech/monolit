@@ -34,39 +34,13 @@ class SSHForeignKeyTest {
         // Create connection
         connection = dataSource.connection
         
-        // Create tables with foreign key constraint
-        val createSshConfigTable = """
-            CREATE TABLE IF NOT EXISTS sshConfig (
-                name VARCHAR(255) PRIMARY KEY,
-                serverHost VARCHAR(255) NOT NULL,
-                port INT NOT NULL,
-                username VARCHAR(255) DEFAULT '',
-                password VARCHAR(255) NOT NULL,
-                createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-        """.trimIndent()
+        // Execute schema.sql to create tables with foreign key constraints
+        val schemaResource = javaClass.classLoader.getResourceAsStream("schema.sql")
+        requireNotNull(schemaResource) { "Could not find schema.sql in classpath" }
         
-        val createSshLogWatcherTable = """
-            CREATE TABLE IF NOT EXISTS SSHLogWatcher (
-                name VARCHAR(255) PRIMARY KEY,
-                sshConfigName VARCHAR(255) NOT NULL,
-                watchDir VARCHAR(255) NOT NULL,
-                recurDepth INT NOT NULL,
-                filePrefix VARCHAR(255) NOT NULL,
-                fileContains VARCHAR(255) NOT NULL,
-                filePostfix VARCHAR(255) NOT NULL,
-                archivedLogs BOOLEAN NOT NULL DEFAULT TRUE,
-                enabled BOOLEAN NOT NULL DEFAULT TRUE,
-                createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (sshConfigName) REFERENCES sshConfig(name)
-            )
-        """.trimIndent()
-        
+        val schemaScript = schemaResource.bufferedReader().use { it.readText() }
         connection.createStatement().use { statement ->
-            statement.execute(createSshConfigTable)
-            statement.execute(createSshLogWatcherTable)
+            statement.execute(schemaScript)
         }
         
         // Initialize CRUD operations
@@ -76,10 +50,20 @@ class SSHForeignKeyTest {
 
     @AfterEach
     fun tearDown() {
-        // Drop test tables
+        // Drop all tables and triggers created by schema.sql
         connection.createStatement().use { statement ->
+            // Drop triggers first to avoid foreign key constraint issues
+            statement.execute("DROP TRIGGER IF EXISTS trg_SSHLogWatcherRecord_Delete")
+            statement.execute("DROP TRIGGER IF EXISTS trg_SSHLogWatcherRecord_Update")
+            statement.execute("DROP TRIGGER IF EXISTS trg_SSHLogWatcherRecord_Insert")
+            
+            // Drop tables in reverse order of dependencies
+            statement.execute("DROP TABLE IF EXISTS SSHLogWatcherRecord_History")
+            statement.execute("DROP TABLE IF EXISTS SSHLogWatcherRecord")
             statement.execute("DROP TABLE IF EXISTS SSHLogWatcher")
             statement.execute("DROP TABLE IF EXISTS sshConfig")
+            
+            // Drop indexes (H2 automatically drops indexes when tables are dropped)
         }
         
         // Close connection

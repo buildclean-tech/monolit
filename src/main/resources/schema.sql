@@ -31,3 +31,24 @@ CREATE TABLE IF NOT EXISTS SSHLogWatcher (
 
 -- Create indexes for SSHLogWatcher
 CREATE INDEX IF NOT EXISTS idxSSHLogWatcherActiveFiles ON SSHLogWatcher(sshConfigName);
+
+-- Create SSHLogWatcherRecord table if it doesn't exist
+CREATE TABLE IF NOT EXISTS SSHLogWatcherRecord (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    sshLogWatcherName VARCHAR(255) NOT NULL,
+    fullFilePath VARCHAR(1024) NOT NULL,
+    fileSize BIGINT NOT NULL,
+    cTime TIMESTAMP NOT NULL,
+    fileHash VARCHAR(255) NOT NULL,
+    createdTime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updatedTime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    consumptionStatus VARCHAR(50) NOT NULL,
+    duplicatedFile VARCHAR(1024),
+    FOREIGN KEY (sshLogWatcherName) REFERENCES SSHLogWatcher(name)
+);
+
+-- Create indexes for SSHLogWatcherRecord
+CREATE INDEX IF NOT EXISTS idxSSHLogWatcherRecordName ON SSHLogWatcherRecord(sshLogWatcherName);
+CREATE INDEX IF NOT EXISTS idxSSHLogWatcherRecordPath ON SSHLogWatcherRecord(fullFilePath);
+CREATE INDEX IF NOT EXISTS idxSSHLogWatcherRecordHash ON SSHLogWatcherRecord(fileHash);
+CREATE INDEX IF NOT EXISTS idxSSHLogWatcherRecordStatus ON SSHLogWatcherRecord(consumptionStatus);

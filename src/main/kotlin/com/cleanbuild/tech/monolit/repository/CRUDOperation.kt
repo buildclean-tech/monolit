@@ -1,5 +1,6 @@
 package com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository
 
+import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.Generated
 import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.PrimaryKey
 import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.SqlTable
 import javax.sql.DataSource
@@ -21,8 +22,9 @@ open class CRUDOperation<T:Any>(private val dataSource: DataSource, private val 
             .firstOrNull()?.tableName     // Extract the table name property
             ?: throw IllegalArgumentException("Entity class must be annotated with @SqlTable")
 
-        // Use Kotlin reflection to get properties
+        // Use Kotlin reflection to get properties, excluding those marked with @Generated
         val members = records.firstOrNull()!!::class.memberProperties
+            .filter { !it.annotations.any { it is Generated } }
         val columns = members.map { it.name }
         val placeholders = columns.joinToString(", ") { "?" }
 
@@ -61,9 +63,11 @@ open class CRUDOperation<T:Any>(private val dataSource: DataSource, private val 
             .firstOrNull()?.tableName     // Extract the table name property
             ?: throw IllegalArgumentException("Entity class must be annotated with @SqlTable")
 
-        // Use Kotlin reflection to get non-primary key properties
-        val nonKeyMembers = records.firstOrNull()!!::class.memberProperties.filter{ !it.annotations.any { it is PrimaryKey } }
-        val keyMembers = records.firstOrNull()!!::class.memberProperties.filter { it.annotations.any { it is PrimaryKey } }
+        // Use Kotlin reflection to get non-primary key properties, excluding those marked with @Generated
+        val nonKeyMembers = records.firstOrNull()!!::class.memberProperties
+            .filter { !it.annotations.any { it is PrimaryKey } && !it.annotations.any { it is Generated } }
+        val keyMembers = records.firstOrNull()!!::class.memberProperties
+            .filter { it.annotations.any { it is PrimaryKey } }
 
         if(keyMembers.size==0)
             throw IllegalStateException("Entity class must have at least one property annotated with @PrimaryKey")

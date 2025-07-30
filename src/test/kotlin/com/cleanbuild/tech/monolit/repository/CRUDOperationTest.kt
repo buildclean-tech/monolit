@@ -1,5 +1,7 @@
 package com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository
 
+import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.Generated
+import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.PrimaryKey
 import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.SqlTable
 import org.h2.jdbcx.JdbcDataSource
 import org.junit.jupiter.api.AfterEach
@@ -391,8 +393,8 @@ class CRUDOperationTest {
         // Create a class with multiple primary keys
         @SqlTable(tableName = "EntityWithMultiplePrimaryKeys")
         data class EntityWithMultiplePrimaryKeys(
-            @com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.PrimaryKey val id1: Int,
-            @com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.PrimaryKey val id2: Int,
+            @PrimaryKey val id1: Int,
+            @PrimaryKey val id2: Int,
             val name: String
         )
         
@@ -400,6 +402,123 @@ class CRUDOperationTest {
         assertFailsWith<IllegalStateException>("Should throw exception for entity with multiple primary keys") {
             val invalidCrudOperation = CRUDOperation<EntityWithMultiplePrimaryKeys>(dataSource, EntityWithMultiplePrimaryKeys::class)
             invalidCrudOperation.findByPrimaryKey(1)
+        }
+    }
+    
+    /**
+     * Tests that fields with @Generated annotation are excluded during insert operations.
+     * 
+     * This test:
+     * 1. Creates a test entity class with a field marked with @Generated
+     * 2. Creates a test table for this entity
+     * 3. Inserts an entity into the database
+     * 4. Verifies that the @Generated field is excluded from the SQL query
+     */
+    @Test
+    fun testInsertWithGeneratedField() {
+        // Create a class with a @Generated field
+        @SqlTable(tableName = "EntityWithGeneratedField")
+        data class EntityWithGeneratedField(
+            @PrimaryKey val id: Int,
+            val name: String,
+            @Generated val generatedValue: String = "auto-generated"
+        )
+        
+        // Create table for the test entity
+        val createTableSQL = """
+            CREATE TABLE IF NOT EXISTS EntityWithGeneratedField (
+                id INT PRIMARY KEY,
+                name VARCHAR(255),
+                generatedValue VARCHAR(255)
+            )
+        """.trimIndent()
+        
+        connection.createStatement().use { statement ->
+            statement.execute(createTableSQL)
+        }
+        
+        // Create and insert test entity
+        val testEntity = EntityWithGeneratedField(id = 1, name = "Test Entity")
+        val crudOp = CRUDOperation(dataSource, EntityWithGeneratedField::class)
+        crudOp.insert(listOf(testEntity))
+        
+        // Verify that the entity was inserted correctly
+        connection.createStatement().use { statement ->
+            val resultSet = statement.executeQuery("SELECT * FROM EntityWithGeneratedField WHERE id = 1")
+            assertTrue(resultSet.next(), "Entity should be inserted")
+            assertEquals(1, resultSet.getInt("id"), "ID should match")
+            assertEquals("Test Entity", resultSet.getString("name"), "Name should match")
+            
+            // The generatedValue field should be NULL in the database since it was excluded from the insert
+            assertNull(resultSet.getString("generatedValue"), "Generated field should be NULL in database")
+        }
+        
+        // Clean up
+        connection.createStatement().use { statement ->
+            statement.execute("DROP TABLE IF EXISTS EntityWithGeneratedField")
+        }
+    }
+    
+    /**
+     * Tests that fields with @Generated annotation are excluded during update operations.
+     * 
+     * This test:
+     * 1. Creates a test entity class with a field marked with @Generated
+     * 2. Creates a test table for this entity
+     * 3. Inserts an entity into the database with an initial value for the @Generated field
+     * 4. Updates the entity
+     * 5. Verifies that the @Generated field is not updated
+     */
+    @Test
+    fun testUpdateWithGeneratedField() {
+        // Create a class with a @Generated field
+        @SqlTable(tableName = "EntityWithGeneratedField")
+        data class EntityWithGeneratedField(
+            @PrimaryKey val id: Int,
+            var name: String,
+            @Generated val generatedValue: String = "auto-generated"
+        )
+        
+        // Create table for the test entity
+        val createTableSQL = """
+            CREATE TABLE IF NOT EXISTS EntityWithGeneratedField (
+                id INT PRIMARY KEY,
+                name VARCHAR(255),
+                generatedValue VARCHAR(255)
+            )
+        """.trimIndent()
+        
+        connection.createStatement().use { statement ->
+            statement.execute(createTableSQL)
+        }
+        
+        // Insert a test entity with an initial value for the generatedValue field
+        connection.createStatement().use { statement ->
+            statement.execute("""
+                INSERT INTO EntityWithGeneratedField (id, name, generatedValue)
+                VALUES (1, 'Original Name', 'initial-value')
+            """.trimIndent())
+        }
+        
+        // Create and update test entity
+        val testEntity = EntityWithGeneratedField(id = 1, name = "Updated Name", generatedValue = "updated-value")
+        val crudOp = CRUDOperation(dataSource, EntityWithGeneratedField::class)
+        crudOp.update(listOf(testEntity))
+        
+        // Verify that the entity was updated correctly
+        connection.createStatement().use { statement ->
+            val resultSet = statement.executeQuery("SELECT * FROM EntityWithGeneratedField WHERE id = 1")
+            assertTrue(resultSet.next(), "Entity should exist")
+            assertEquals(1, resultSet.getInt("id"), "ID should match")
+            assertEquals("Updated Name", resultSet.getString("name"), "Name should be updated")
+            
+            // The generatedValue field should still have its initial value since it was excluded from the update
+            assertEquals("initial-value", resultSet.getString("generatedValue"), "Generated field should not be updated")
+        }
+        
+        // Clean up
+        connection.createStatement().use { statement ->
+            statement.execute("DROP TABLE IF EXISTS EntityWithGeneratedField")
         }
     }
 }

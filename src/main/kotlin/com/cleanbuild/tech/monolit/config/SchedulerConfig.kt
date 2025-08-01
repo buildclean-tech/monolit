@@ -24,10 +24,10 @@ open class SchedulerConfig(
     private val luceneIngestionRunning = AtomicBoolean(false)
     
     /**
-     * Schedule the SSH log watcher processing to run every 15 minutes
+     * Schedule the SSH log watcher processing to run every 1 minute
      * fixedRate = 15 minutes in milliseconds
      */
-    @Scheduled(fixedRate = 15*60*1000)
+    @Scheduled(fixedRate = 1*60*1000)
     open fun runSSHLogWatcherProcessing() {
         // Skip if already running to prevent concurrent execution
         if (!sshLogWatcherRunning.compareAndSet(false, true)) {
@@ -49,9 +49,9 @@ open class SchedulerConfig(
     
     /**
      * Schedule the Lucene ingestion processing to run every 15 minutes
-     * fixedRate = 15 minutes in milliseconds
+     * fixedRate = 1 minutes in milliseconds
      */
-    @Scheduled(fixedRate = 15*60*1000)
+    @Scheduled(fixedRate = 1*60*1000)
     open fun runLuceneIngestionProcessing() {
         // Skip if already running to prevent concurrent execution
         if (!luceneIngestionRunning.compareAndSet(false, true)) {

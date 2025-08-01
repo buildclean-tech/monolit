@@ -64,6 +64,14 @@ class HomeController {
             <h1>Welcome to Monolit</h1>
             <p>This is a simple home page rendered directly from the controller.</p>
             
+            <div class="nav-links" style="margin-bottom: 20px; text-align: center;">
+                <a href="/" style="margin-right: 15px; color: #3498db; text-decoration: none;">Home</a>
+                <a href="/dashboard" style="margin-right: 15px; color: #3498db; text-decoration: none;">SSH Configs</a>
+                <a href="/ssh-log-watcher" style="margin-right: 15px; color: #3498db; text-decoration: none;">SSH Log Watchers</a>
+                <a href="/sshlogwatcher-records" style="margin-right: 15px; color: #3498db; text-decoration: none;">SSH Log Watcher Records</a>
+                <a href="/log-search" style="margin-right: 15px; color: #3498db; text-decoration: none;">Log Search</a>
+            </div>
+            
             <div class="info">
                 <h2>About This Page</h2>
                 <p>This HTML is being returned directly from the HomeController without using Thymeleaf or a model-view approach.</p>

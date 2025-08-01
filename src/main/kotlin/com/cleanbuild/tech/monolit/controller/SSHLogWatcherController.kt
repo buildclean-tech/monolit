@@ -152,12 +152,14 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
         </head>
         <body>
             <div class="container">
-                <h1>SSH Log Watcher Dashboard</h1>
-                
-                <div class="navigation">
-                    <a href="/dashboard" class="btn">SSH Configs</a>
-                    <a href="/ssh-log-watcher" class="btn">SSH Log Watchers</a>
+                <div class="nav-links" style="margin-bottom: 20px;">
+                    <a href="/" style="margin-right: 15px; color: #3498db; text-decoration: none;">Home</a>
+                    <a href="/dashboard" style="margin-right: 15px; color: #3498db; text-decoration: none;">SSH Configs</a>
+                    <a href="/ssh-log-watcher" style="margin-right: 15px; color: #3498db; text-decoration: none;">SSH Log Watchers</a>
+                    <a href="/sshlogwatcher-records" style="margin-right: 15px; color: #3498db; text-decoration: none;">SSH Log Watcher Records</a>
                 </div>
+                
+                <h1>SSH Log Watcher Dashboard</h1>
                 
                 <div id="message-container" class="hidden message"></div>
                 

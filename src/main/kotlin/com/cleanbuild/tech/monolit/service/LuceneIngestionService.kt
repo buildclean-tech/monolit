@@ -261,6 +261,7 @@ class LuceneIngestionService(
         val timestampLong = parseTimestampToLong(timestamp)
         
         // Add fields - only index md5Id, logStrTimestamp, logLongTimestamp, logPath, and content
+        // Store original values for retrieval but index lowercase versions for case-insensitive search
         doc.add(StringField("md5Id", contentMD5Hash, Field.Store.YES))
         doc.add(StringField("logStrTimestamp", timestamp, Field.Store.YES))
         // Add the parsed timestamp as a long field
@@ -270,8 +271,9 @@ class LuceneIngestionService(
         doc.add(StringField("sshConfigName", sshConfig.name, Field.Store.NO))
         doc.add(StringField("sshWatcherName", record.sshLogWatcherName, Field.Store.NO))
         doc.add(LongField("sshWatcherRecordId", record.id!!, Field.Store.NO))
-        doc.add(TextField("logPath", filePath, Field.Store.YES))
-        doc.add(TextField("content", logEntry, Field.Store.YES))
+        // Store original values but index lowercase versions for case-insensitive search
+        doc.add(TextField("logPath", filePath.lowercase(), Field.Store.YES))
+        doc.add(TextField("content", logEntry.lowercase(), Field.Store.YES))
 
         // Add the document to the index
         // Use contentMD5Hash as the unique identifier to avoid duplicates

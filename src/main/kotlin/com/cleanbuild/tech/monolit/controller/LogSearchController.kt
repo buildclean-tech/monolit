@@ -2,6 +2,7 @@ package com.cleanbuild.tech.monolit.controller
 
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcher
 import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository.CRUDOperation
+import com.cleanbuild.tech.monolit.service.LuceneIngestionService
 import org.apache.lucene.analysis.standard.StandardAnalyzer
 import org.apache.lucene.document.Document
 import org.apache.lucene.index.DirectoryReader
@@ -17,6 +18,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import java.nio.file.Files
 import java.nio.file.Paths
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -24,10 +26,11 @@ import javax.sql.DataSource
 
 @RestController
 @RequestMapping("/log-search")
-class LogSearchController(private val dataSource: DataSource) {
-
+class LogSearchController(
+    private val dataSource: DataSource,
+    private val luceneIngestionService: LuceneIngestionService
+) {
     private val sshLogWatcherCrud = CRUDOperation(dataSource, SSHLogWatcher::class)
-    private val baseIndexDir = Paths.get(System.getProperty("lucene.index.dir", "lucene-indexes"))
     private val analyzer = StandardAnalyzer()
 
     // Get all SSHLogWatcher names for the dropdown
@@ -40,8 +43,9 @@ class LogSearchController(private val dataSource: DataSource) {
         val filePaths = mutableSetOf<String>()
         
         try {
-            val indexDir = baseIndexDir.resolve(watcherName)
-            if (!indexDir.toFile().exists()) {
+            // Use LuceneIngestionService's baseIndexDir
+            val indexDir = luceneIngestionService.getBaseIndexDir().resolve(watcherName)
+            if (!Files.exists(indexDir)) {
                 return emptyList()
             }
             
@@ -358,8 +362,9 @@ class LogSearchController(private val dataSource: DataSource) {
         val results = mutableListOf<SearchResult>()
         
         try {
-            val indexDir = baseIndexDir.resolve(watcherName)
-            if (!indexDir.toFile().exists()) {
+            // Use LuceneIngestionService's baseIndexDir
+            val indexDir = luceneIngestionService.getBaseIndexDir().resolve(watcherName)
+            if (!Files.exists(indexDir)) {
                 return emptyList()
             }
             

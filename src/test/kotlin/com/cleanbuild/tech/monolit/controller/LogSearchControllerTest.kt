@@ -2,6 +2,7 @@ package com.cleanbuild.tech.monolit.controller
 
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcher
 import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository.CRUDOperation
+import com.cleanbuild.tech.monolit.service.LuceneIngestionService
 import org.apache.lucene.document.Document
 import org.apache.lucene.document.Field
 import org.apache.lucene.document.StringField
@@ -40,6 +41,9 @@ class LogSearchControllerTest {
 
     @MockBean
     private lateinit var dataSource: DataSource
+    
+    @MockBean
+    private lateinit var luceneIngestionService: LuceneIngestionService
 
     @TempDir
     lateinit var tempDir: Path
@@ -55,6 +59,9 @@ class LogSearchControllerTest {
         
         // Set the system property for the Lucene index directory
         System.setProperty("lucene.index.dir", indexDir.toString())
+        
+        // Configure the mock LuceneIngestionService
+        `when`(luceneIngestionService.getBaseIndexDir()).thenReturn(indexDir)
         
         // Get access to the private searchLogs method using reflection
         searchLogsMethod = LogSearchController::class.java.getDeclaredMethod(
@@ -77,6 +84,10 @@ class LogSearchControllerTest {
     fun cleanup() {
         // Reset the system property
         System.clearProperty("lucene.index.dir")
+    }
+
+    private fun createController(): LogSearchController {
+        return LogSearchController(dataSource, luceneIngestionService)
     }
 
     private fun createTestIndex(watcherName: String, documents: List<Map<String, String>>) {
@@ -108,7 +119,7 @@ class LogSearchControllerTest {
     @Test
     fun `searchLogs returns results when content query matches`() {
         // Create a controller instance with mocked dependencies
-        val controller = LogSearchController(dataSource)
+        val controller = createController()
         
         // Create test index with sample documents
         val watcherName = "test-watcher"
@@ -165,7 +176,7 @@ class LogSearchControllerTest {
     @Test
     fun `searchLogs returns results when timestamp query matches`() {
         // Create a controller instance with mocked dependencies
-        val controller = LogSearchController(dataSource)
+        val controller = LogSearchController(dataSource, luceneIngestionService)
         
         // Create test index with sample documents
         val watcherName = "test-watcher"
@@ -214,7 +225,7 @@ class LogSearchControllerTest {
     @Test
     fun `searchLogs returns results when logPath query matches`() {
         // Create a controller instance with mocked dependencies
-        val controller = LogSearchController(dataSource)
+        val controller = createController()
         
         // Create test index with sample documents
         val watcherName = "test-watcher"
@@ -258,7 +269,7 @@ class LogSearchControllerTest {
     @Test
     fun `searchLogs uses OR operator correctly`() {
         // Create a controller instance with mocked dependencies
-        val controller = LogSearchController(dataSource)
+        val controller = createController()
         
         // Create test index with sample documents
         val watcherName = "test-watcher"
@@ -298,7 +309,7 @@ class LogSearchControllerTest {
     @Test
     fun `searchLogs uses AND operator correctly`() {
         // Create a controller instance with mocked dependencies
-        val controller = LogSearchController(dataSource)
+        val controller = createController()
         
         // Create test index with sample documents
         val watcherName = "test-watcher"
@@ -350,7 +361,7 @@ class LogSearchControllerTest {
     @Test
     fun `searchLogs handles filePath filter correctly`() {
         // Create a controller instance with mocked dependencies
-        val controller = LogSearchController(dataSource)
+        val controller = createController()
         
         // Create test index with sample documents
         val watcherName = "test-watcher"
@@ -394,7 +405,7 @@ class LogSearchControllerTest {
     @Test
     fun `searchLogs handles pagination correctly`() {
         // Create a controller instance with mocked dependencies
-        val controller = LogSearchController(dataSource)
+        val controller = createController()
         
         // Create test index with sample documents - using a smaller set for more predictable results
         val watcherName = "test-watcher"
@@ -476,7 +487,7 @@ class LogSearchControllerTest {
     @Test
     fun `searchLogs returns empty list when no matches found`() {
         // Create a controller instance with mocked dependencies
-        val controller = LogSearchController(dataSource)
+        val controller = createController()
         
         // Create test index with sample documents
         val watcherName = "test-watcher"
@@ -511,7 +522,7 @@ class LogSearchControllerTest {
     @Test
     fun `searchLogs returns empty list when index directory doesn't exist`() {
         // Create a controller instance with mocked dependencies
-        val controller = LogSearchController(dataSource)
+        val controller = createController()
         
         // Invoke the private searchLogs method with non-existent watcher
         val results = searchLogsMethod.invoke(
@@ -535,7 +546,7 @@ class LogSearchControllerTest {
     @Test
     fun `searchLogs returns empty list when no search criteria provided`() {
         // Create a controller instance with mocked dependencies
-        val controller = LogSearchController(dataSource)
+        val controller = createController()
         
         // Create test index with sample documents
         val watcherName = "test-watcher"

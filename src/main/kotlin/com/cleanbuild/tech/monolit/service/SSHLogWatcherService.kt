@@ -123,15 +123,14 @@ class SSHLogWatcherService(
      * Process a single file found by the watcher
      */
     private fun processFile(watcher: SSHLogWatcher, file: SSHCommandRunner.FileMetadata) {
-        val fullPath = "${file.filepath}/${file.filename}"
-        logger.debug("Processing file: $fullPath")
+        logger.debug("Processing file: ${file.filepath}")
         
         // Calculate file hash
         val fileHash = calculateFileHash(file.filename, file.size, file.ctime)
         
         // Check for duplicates based on hash
         val duplicateRecords = sshLogWatcherRecordCrud.findByColumnValues(mapOf(SSHLogWatcherRecord::fileHash to fileHash))
-            .filter { it.fileHash == fileHash && it.sshLogWatcherName == watcher.name && it.fullFilePath != fullPath }
+            .filter { it.fileHash == fileHash && it.sshLogWatcherName == watcher.name && it.fullFilePath != file.filepath }
         
         val duplicatedFile = if (duplicateRecords.isNotEmpty()) {
             duplicateRecords.first().fullFilePath
@@ -143,7 +142,7 @@ class SSHLogWatcherService(
         val record = SSHLogWatcherRecord(
             id = null, // Auto-generated
             sshLogWatcherName = watcher.name,
-            fullFilePath = fullPath,
+            fullFilePath = file.filepath,
             fileSize = file.size,
             cTime = Timestamp(file.ctime),
             fileHash = fileHash,
@@ -154,9 +153,9 @@ class SSHLogWatcherService(
         // Save the record
         try {
             sshLogWatcherRecordCrud.insert(listOf(record))
-            logger.info("Created new record for file: $fullPath")
+            logger.info("Created new record for file: ${file.filepath}")
         } catch (e: Exception) {
-            logger.error("Error creating record for file $fullPath: ${e.message}", e)
+            logger.error("Error creating record for file ${file.filepath}: ${e.message}", e)
         }
     }
     

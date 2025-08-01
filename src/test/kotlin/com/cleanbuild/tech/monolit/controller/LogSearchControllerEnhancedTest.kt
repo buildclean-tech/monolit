@@ -19,9 +19,11 @@ import java.nio.file.Path
 import java.lang.reflect.Method
 import org.junit.jupiter.api.Assertions.*
 import org.mockito.Mockito
+import org.mockito.Mockito.`when`
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import javax.sql.DataSource
+import com.cleanbuild.tech.monolit.service.LuceneIngestionService
 
 /**
  * Enhanced test cases for LogSearchController without mocking the dependencies
@@ -51,8 +53,14 @@ class LogSearchControllerEnhancedTest {
         // Create a minimal mock for DataSource since we're focusing on testing Lucene search
         dataSource = Mockito.mock(DataSource::class.java)
         
-        // Create controller with the DataSource
-        controller = LogSearchController(dataSource)
+        // Create a mock for LuceneIngestionService
+        val luceneIngestionService = Mockito.mock(LuceneIngestionService::class.java)
+        
+        // Configure the mock to return our test index directory
+        `when`(luceneIngestionService.getBaseIndexDir()).thenReturn(indexDir)
+        
+        // Create controller with the mocked dependencies
+        controller = LogSearchController(dataSource, luceneIngestionService)
         
         // Set up MockMvc for testing web endpoints
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build()

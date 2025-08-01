@@ -148,9 +148,9 @@ class BashProcessCommand(
             }
         }
         thread?.start()
-        thread?.join()
-        process?.destroy()
-        channel?.close()
+//        thread?.join()
+//        process?.destroy()
+//        channel?.close()
         logger.info("Command process exited successfully.")
     }
 

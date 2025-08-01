@@ -114,16 +114,26 @@ class LuceneIngestionService(
         // Get or create index writer for this watcher
         val indexWriter = getIndexWriter(watcher.name)
         
+        // Counter for successful updates
+        var successfulUpdates = 0
+        // Counter for total documents processed
+        var totalDocsProcessed = 0
+        
         // Process each record
         records.forEach { record ->
             try {
-                processRecord(record, watcher, sshConfig, indexWriter)
+                val docsProcessed = processRecord(record, watcher, sshConfig, indexWriter)
                 
                 // Update record status to "INDEXED"
                 val updatedRecord = record.copy(consumptionStatus = "INDEXED")
                 // Commit changes to the index
                 indexWriter.commit()
                 sshLogWatcherRecordCrud.update(listOf(updatedRecord))
+                
+                // Increment successful updates counter
+                successfulUpdates++
+                // Add to total documents processed
+                totalDocsProcessed += docsProcessed
                 
             } catch (e: Exception) {
                 logger.error("Error processing record ${record.id} for watcher $watcherName: ${e.message}", e)
@@ -133,24 +143,29 @@ class LuceneIngestionService(
                 sshLogWatcherRecordCrud.update(listOf(updatedRecord))
             }
         }
+        
+        // Log the number of successful updates and documents processed for this watcher
+        logger.info("Completed processing for watcher: $watcherName - $successfulUpdates successful updates out of ${records.size} records, $totalDocsProcessed log documents inserted/updated")
     }
     
     /**
      * Process a single record
+     * @return the number of documents processed
      */
     private fun processRecord(
         record: SSHLogWatcherRecord,
         watcher: SSHLogWatcher,
         sshConfig: SSHConfig,
         indexWriter: IndexWriter
-    ) {
+    ): Int {
         logger.debug("Processing record: ${record.id}, file: ${record.fullFilePath}")
         
         try {
             // Process file content as a stream
-            processFileStream(sshConfig, record.fullFilePath, record, sshConfig, indexWriter)
+            val docsProcessed = processFileStream(sshConfig, record.fullFilePath, record, sshConfig, indexWriter)
             
-            logger.debug("Indexed record: ${record.id}, file: ${record.fullFilePath}")
+            logger.debug("Indexed record: ${record.id}, file: ${record.fullFilePath}, documents processed: $docsProcessed")
+            return docsProcessed
         } catch (e: Exception) {
             logger.error("Error indexing record ${record.id}: ${e.message}", e)
             throw e
@@ -160,6 +175,7 @@ class LuceneIngestionService(
     /**
      * Process file content as a stream, treating each log line as a separate document
      * Handles multi-line logs by identifying timestamp patterns
+     * @return the number of documents processed
      */
     private fun processFileStream(
         sshConfig: SSHConfig,
@@ -167,7 +183,7 @@ class LuceneIngestionService(
         record: SSHLogWatcherRecord,
         config: SSHConfig,
         indexWriter: IndexWriter
-    ) {
+    ): Int {
         try {
             // Get file stream via SSH
             val inputStream = sshCommandRunner.getFileStream(sshConfig, filePath)
@@ -225,10 +241,13 @@ class LuceneIngestionService(
                     indexWriter,
                     currentTimestamp
                 )
+                documentCount++
             }
             
             // Close the reader
             reader.close()
+            
+            return documentCount
             
         } catch (e: Exception) {
             logger.error("Error processing file stream for $filePath: ${e.message}", e)

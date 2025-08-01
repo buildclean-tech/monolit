@@ -3,6 +3,7 @@ package com.cleanbuild.tech.monolit.config
 import com.cleanbuild.tech.monolit.DbRecord.SSHConfig
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcher
 import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository.CRUDOperation
+import com.cleanbuild.tech.monolit.service.LuceneIngestionService
 import com.cleanbuild.tech.monolit.service.SSHLogWatcherService
 import com.cleanbuild.tech.monolit.ssh.SSHCommandRunner
 import com.cleanbuild.tech.monolit.ssh.SSHSessionFactory
@@ -32,10 +33,12 @@ class SchedulerConfigRealTest {
     
     // Service and config under test
     private lateinit var sshLogWatcherService: SSHLogWatcherService
+    private lateinit var luceneIngestionService: LuceneIngestionService
     private lateinit var schedulerConfig: SchedulerConfig
     
     // Spy for the service to verify method calls
     private lateinit var sshLogWatcherServiceSpy: SSHLogWatcherService
+    private lateinit var luceneIngestionServiceMock: LuceneIngestionService
     
     @BeforeEach
     fun setUp() {
@@ -46,14 +49,16 @@ class SchedulerConfigRealTest {
         sshSessionFactory = SSHSessionFactory()
         sshCommandRunner = SSHCommandRunner(sshSessionFactory)
         
-        // Create the service
+        // Create the services
         sshLogWatcherService = SSHLogWatcherService(dataSource, sshCommandRunner)
+        luceneIngestionService = LuceneIngestionService(dataSource, sshCommandRunner)
         
-        // Create a spy on the service to verify method calls
+        // Create a spy/mock for the services to verify method calls
         sshLogWatcherServiceSpy = Mockito.spy(sshLogWatcherService)
+        luceneIngestionServiceMock = Mockito.mock(LuceneIngestionService::class.java)
         
-        // Create the scheduler config with the spy service
-        schedulerConfig = SchedulerConfig(sshLogWatcherServiceSpy)
+        // Create the scheduler config with the spy/mock services
+        schedulerConfig = SchedulerConfig(sshLogWatcherServiceSpy, luceneIngestionServiceMock)
     }
     
     private fun setupDatabase() {
@@ -98,18 +103,19 @@ class SchedulerConfigRealTest {
     
     @Test
     fun `test runSSHLogWatcherProcessing handles exceptions`() {
-        // Create a mock service that throws an exception
-        val mockService = Mockito.mock(SSHLogWatcherService::class.java)
-        Mockito.`when`(mockService.processLogWatchers()).thenThrow(RuntimeException("Test exception"))
+        // Create mock services that throw exceptions
+        val mockSshService = Mockito.mock(SSHLogWatcherService::class.java)
+        val mockLuceneService = Mockito.mock(LuceneIngestionService::class.java)
+        Mockito.`when`(mockSshService.processLogWatchers()).thenThrow(RuntimeException("Test exception"))
         
-        // Create a scheduler config with the mock service
-        val schedulerWithMockService = SchedulerConfig(mockService)
+        // Create a scheduler config with the mock services
+        val schedulerWithMockService = SchedulerConfig(mockSshService, mockLuceneService)
         
         // Execute the scheduled method - should not throw an exception
         schedulerWithMockService.runSSHLogWatcherProcessing()
         
         // Verify that processLogWatchers was called
-        verify(mockService).processLogWatchers()
+        verify(mockSshService).processLogWatchers()
     }
     
     @Test

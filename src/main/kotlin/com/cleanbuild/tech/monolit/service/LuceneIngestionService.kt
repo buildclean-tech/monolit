@@ -19,6 +19,7 @@ import java.io.InputStreamReader
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import javax.sql.DataSource
 
@@ -146,13 +147,8 @@ class LuceneIngestionService(
         logger.debug("Processing record: ${record.id}, file: ${record.fullFilePath}")
         
         try {
-            // Extract path and filename
-            val pathParts = record.fullFilePath.split("/")
-            val filename = pathParts.lastOrNull() ?: ""
-            val path = pathParts.dropLast(1).joinToString("/")
-            
             // Process file content as a stream
-            processFileStream(sshConfig, record.fullFilePath, record, sshConfig, path, filename, indexWriter)
+            processFileStream(sshConfig, record.fullFilePath, record, sshConfig, indexWriter)
             
             logger.debug("Indexed record: ${record.id}, file: ${record.fullFilePath}")
         } catch (e: Exception) {
@@ -170,8 +166,6 @@ class LuceneIngestionService(
         filePath: String,
         record: SSHLogWatcherRecord,
         config: SSHConfig,
-        path: String,
-        filename: String,
         indexWriter: IndexWriter
     ) {
         try {
@@ -198,10 +192,8 @@ class LuceneIngestionService(
                                 currentLogEntry.toString(),
                                 record,
                                 config,
-                                path,
-                                filename,
+                                filePath,
                                 indexWriter,
-                                documentCount,
                                 currentTimestamp
                             )
                             documentCount++
@@ -218,7 +210,7 @@ class LuceneIngestionService(
                         // This is a line without a timestamp and no current log entry
                         // Treat it as its own log entry
                         currentLogEntry.append(line)
-                        currentTimestamp = "unknown-${documentCount}"
+                        currentTimestamp = ""
                     }
                 }
             }
@@ -229,10 +221,8 @@ class LuceneIngestionService(
                     currentLogEntry.toString(),
                     record,
                     config,
-                    path,
-                    filename,
+                    filePath,
                     indexWriter,
-                    documentCount,
                     currentTimestamp
                 )
             }
@@ -254,32 +244,38 @@ class LuceneIngestionService(
         logEntry: String,
         record: SSHLogWatcherRecord,
         sshConfig: SSHConfig,
-        path: String,
-        filename: String,
+        filePath: String,
         indexWriter: IndexWriter,
-        documentCount: Int,
         timestamp: String
     ) {
-        // Create a unique ID for this log entry
-        val logEntryId = "${record.id}-${timestamp}-${documentCount}"
+        // Create content string for hashing (including timestamp and server)
+        val contentForHash = "${sshConfig.serverHost}|${sshConfig.name}$logEntry|$timestamp|"
+        
+        // Generate MD5 hash as unique identifier
+        val contentMD5Hash = generateMD5Hash(contentForHash)
         
         // Create Lucene document
         val doc = Document()
         
-        // Add fields
-        doc.add(StringField("id", logEntryId, Field.Store.YES))
-        doc.add(StringField("recordId", record.id.toString(), Field.Store.YES))
-        doc.add(StringField("logHash", "${record.fileHash}-${documentCount}", Field.Store.YES))
-        doc.add(LongField("timestamp", record.cTime.time, Field.Store.YES))
-        doc.add(StringField("logTimestamp", timestamp, Field.Store.YES))
-        doc.add(StringField("server", sshConfig.serverHost, Field.Store.YES))
-        doc.add(StringField("path", path, Field.Store.YES))
-        doc.add(StringField("file", filename, Field.Store.YES))
+        // Parse timestamp to long if it has the expected format
+        val timestampLong = parseTimestampToLong(timestamp)
+        
+        // Add fields - only index md5Id, logStrTimestamp, logLongTimestamp, logPath, and content
+        doc.add(StringField("md5Id", contentMD5Hash, Field.Store.YES))
+        doc.add(StringField("logStrTimestamp", timestamp, Field.Store.YES))
+        // Add the parsed timestamp as a long field
+        doc.add(LongField("logLongTimestamp", timestampLong ?: 0L, Field.Store.YES))
+        doc.add(LongField("ingestionLongTimestamp", System.currentTimeMillis(), Field.Store.NO))
+        doc.add(StringField("sshConfigServer", sshConfig.serverHost, Field.Store.NO))
+        doc.add(StringField("sshConfigName", sshConfig.name, Field.Store.NO))
+        doc.add(StringField("sshWatcherName", record.sshLogWatcherName, Field.Store.NO))
+        doc.add(LongField("sshWatcherRecordId", record.id!!, Field.Store.NO))
+        doc.add(TextField("logPath", filePath, Field.Store.YES))
         doc.add(TextField("content", logEntry, Field.Store.YES))
 
         // Add the document to the index
-        // Use logEntryId as the unique identifier to avoid duplicates
-        indexWriter.updateDocument(Term("id", logEntryId), doc)
+        // Use contentMD5Hash as the unique identifier to avoid duplicates
+        indexWriter.updateDocument(Term("md5Id", contentMD5Hash), doc)
     }
     
     /**
@@ -332,5 +328,46 @@ class LuceneIngestionService(
      */
     fun close() {
         closeAllIndexWriters()
+    }
+    
+    /**
+     * Generate MD5 hash from input string
+     */
+    private fun generateMD5Hash(input: String): String {
+        val md = MessageDigest.getInstance("MD5")
+        val digest = md.digest(input.toByteArray())
+        return digest.joinToString("") { "%02x".format(it) }
+    }
+    
+    /**
+     * Parse timestamp string to long value
+     * Format: YYYY-MM-DD HH:MM:SS.SSS
+     */
+    private fun parseTimestampToLong(timestamp: String): Long? {
+        if (!timestamp.matches(Regex("\\d{4}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2}:\\d{2}\\.\\d{3}"))) {
+            return null
+        }
+        
+        try {
+            // Parse timestamp in format "YYYY-MM-DD HH:MM:SS.SSS"
+            val parts = timestamp.split("\t", " ", ".", ":", "-")
+            
+            val year = parts[0].toInt()
+            val month = parts[1].toInt() - 1 // Month is 0-based in java.util.Calendar
+            val day = parts[2].toInt()
+            val hour = parts[3].toInt()
+            val minute = parts[4].toInt()
+            val second = parts[5].toInt()
+            val millisecond = parts[6].toInt()
+            
+            val calendar = java.util.Calendar.getInstance()
+            calendar.set(year, month, day, hour, minute, second)
+            calendar.set(java.util.Calendar.MILLISECOND, millisecond)
+            
+            return calendar.timeInMillis
+        } catch (e: Exception) {
+            logger.warn("Failed to parse timestamp: $timestamp", e)
+            return null
+        }
     }
 }

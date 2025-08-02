@@ -5,6 +5,7 @@ import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcher
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcherRecord
 import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository.CRUDOperation
 import com.cleanbuild.tech.monolit.ssh.SSHCommandRunner
+import org.jetbrains.kotlin.util.Time
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.security.MessageDigest
@@ -127,33 +128,43 @@ class SSHLogWatcherService(
         
         // Calculate file hash
         val fileHash = calculateFileHash(file.filename, file.size, file.ctime)
-        
-        // Check for duplicates based on hash
-        val duplicateRecords = sshLogWatcherRecordCrud.findByColumnValues(mapOf(SSHLogWatcherRecord::fileHash to fileHash))
-            .filter { it.fileHash == fileHash && it.sshLogWatcherName == watcher.name && it.fullFilePath != file.filepath }
-        
-        val duplicatedFile = if (duplicateRecords.isNotEmpty()) {
-            duplicateRecords.first().fullFilePath
-        } else {
-            null
-        }
-        
-        // Create a new record
-        val record = SSHLogWatcherRecord(
-            id = null, // Auto-generated
-            sshLogWatcherName = watcher.name,
-            fullFilePath = file.filepath,
-            fileSize = file.size,
-            cTime = Timestamp(file.ctime),
-            fileHash = fileHash,
-            consumptionStatus = if (duplicatedFile != null) "DUPLICATED" else "NEW",
-            duplicatedFile = duplicatedFile
-        )
+
+        //Check for any changes to file size or ctime
+        val existingRecord = sshLogWatcherRecordCrud.findByColumnValues(mapOf(SSHLogWatcherRecord::fileHash to fileHash))
+            .firstOrNull { it.fileHash == fileHash && it.sshLogWatcherName == watcher.name && it.fullFilePath == file.filepath }
+
         
         // Save the record
         try {
-            sshLogWatcherRecordCrud.insert(listOf(record))
-            logger.info("Created new record for file: ${file.filepath}")
+             if(existingRecord==null) {
+                // Check for duplicates based on hash
+                val duplicateRecords = sshLogWatcherRecordCrud.findByColumnValues(mapOf(SSHLogWatcherRecord::fileHash to fileHash))
+                    .filter { it.fileHash == fileHash && it.sshLogWatcherName == watcher.name && it.fullFilePath != file.filepath }
+
+                val duplicatedFile = if (duplicateRecords.isNotEmpty()) {
+                    duplicateRecords.first().fullFilePath
+                } else {
+                    null
+                }
+
+                // Create a new record
+                val record = SSHLogWatcherRecord(
+                    id = null, // Auto-generated
+                    sshLogWatcherName = watcher.name,
+                    fullFilePath = file.filepath,
+                    fileSize = file.size,
+                    cTime = Timestamp(file.ctime),
+                    fileHash = fileHash,
+                    consumptionStatus = if (duplicatedFile != null) "DUPLICATED" else "NEW",
+                    duplicatedFile = duplicatedFile
+                )
+                sshLogWatcherRecordCrud.insert(listOf(record))
+                logger.info("Created new record for file: ${file.filepath}")
+            } else {
+                 // Update existing record time
+                sshLogWatcherRecordCrud.update(listOf(existingRecord.copy(updatedTime = Timestamp(System.currentTimeMillis()))))
+             }
+
         } catch (e: Exception) {
             logger.error("Error creating record for file ${file.filepath}: ${e.message}", e)
         }

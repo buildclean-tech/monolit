@@ -466,7 +466,7 @@ class SSHLogWatcherServiceTest {
     }
     
     @Test
-    fun `test processLogWatchers creates duplicate records`() {
+    fun `test processLogWatchers updates existing records`() {
         // Create a test watcher
         val watcher = SSHLogWatcher(
             name = "test-watcher-duplicates",
@@ -493,11 +493,218 @@ class SSHLogWatcherServiceTest {
         val firstRunCount = firstRunRecords.size
         assertTrue(firstRunCount > 0, "Should create records on first run")
         
+        // Store the original updatedTime values
+        val originalUpdatedTimes = firstRunRecords.associate { it.id to it.updatedTime }
+        
+        // Wait a moment to ensure timestamps would be different
+        Thread.sleep(100)
+        
         // Process log watchers second time
         sshLogWatcherService.processLogWatchers()
         
-        // Verify duplicate records were created
+        // Verify no new records were created, but existing ones were updated
         val secondRunRecords = sshLogWatcherRecordCrud.findAll()
-        assertTrue(secondRunRecords.size > firstRunCount, "Should create duplicate records on second run")
+        assertEquals(firstRunCount, secondRunRecords.size, "Should not create new records on second run")
+        
+        // Verify that updatedTime was updated for existing records
+        secondRunRecords.forEach { record ->
+            val originalTime = originalUpdatedTimes[record.id]
+            assertNotNull(originalTime, "Original record should exist")
+            assertTrue(record.updatedTime.after(originalTime), 
+                "Updated time should be later than original time for record ${record.id}")
+        }
+    }
+    
+    @Test
+    fun `test processLogWatchers does not insert existing records if file hash unchanged`() {
+        // Create a test watcher
+        val watcher = SSHLogWatcher(
+            name = "test-watcher-no-duplicates",
+            sshConfigName = "test-config",
+            watchDir = toUnixPath(logsDir),
+            recurDepth = 1,
+            filePrefix = "app-",
+            fileContains = "log",
+            filePostfix = ".txt",
+            archivedLogs = true,
+            enabled = true,
+            createdAt = Timestamp(System.currentTimeMillis()),
+            updatedAt = Timestamp(System.currentTimeMillis())
+        )
+        
+        // Insert the watcher into the database
+        sshLogWatcherCrud.insert(listOf(watcher))
+        
+        // Process log watchers first time
+        sshLogWatcherService.processLogWatchers()
+        
+        // Verify records were created
+        val firstRunRecords = sshLogWatcherRecordCrud.findAll()
+        val firstRunCount = firstRunRecords.size
+        assertTrue(firstRunCount > 0, "Should create records on first run")
+        
+        // Store the original updatedTime values
+        val originalUpdatedTimes = firstRunRecords.associate { it.id to it.updatedTime }
+        
+        // Wait a moment to ensure timestamps would be different
+        Thread.sleep(100)
+        
+        // Process log watchers second time (without changing files)
+        sshLogWatcherService.processLogWatchers()
+        
+        // Verify no new records were created
+        val secondRunRecords = sshLogWatcherRecordCrud.findAll()
+        assertEquals(firstRunCount, secondRunRecords.size, "Should not create new records if file hash unchanged")
+        
+        // Verify that updatedTime was updated for existing records
+        secondRunRecords.forEach { record ->
+            val originalTime = originalUpdatedTimes[record.id]
+            assertNotNull(originalTime, "Original record should exist")
+            assertTrue(record.updatedTime.after(originalTime), 
+                "Updated time should be later than original time for record ${record.id}")
+        }
+    }
+    
+    @Test
+    fun `test processLogWatchers creates new record when file size changes`() {
+        // Create a test watcher
+        val watcher = SSHLogWatcher(
+            name = "test-watcher-size-change",
+            sshConfigName = "test-config",
+            watchDir = toUnixPath(logsDir),
+            recurDepth = 1,
+            filePrefix = "app-",
+            fileContains = "log",
+            filePostfix = ".txt",
+            archivedLogs = true,
+            enabled = true,
+            createdAt = Timestamp(System.currentTimeMillis()),
+            updatedAt = Timestamp(System.currentTimeMillis())
+        )
+        
+        // Insert the watcher into the database
+        sshLogWatcherCrud.insert(listOf(watcher))
+        
+        // Process log watchers first time
+        sshLogWatcherService.processLogWatchers()
+        
+        // Verify records were created
+        val firstRunRecords = sshLogWatcherRecordCrud.findAll()
+        val firstRunCount = firstRunRecords.size
+        assertTrue(firstRunCount > 0, "Should create records on first run")
+        
+        // Wait a moment to ensure timestamps would be different
+        Thread.sleep(100)
+        
+        // Modify file size by appending content
+        Files.write(logFile1, "Additional content to change file size".toByteArray(), 
+            java.nio.file.StandardOpenOption.APPEND)
+        
+        // Process log watchers second time
+        sshLogWatcherService.processLogWatchers()
+        
+        // Verify new records were created due to size change
+        val secondRunRecords = sshLogWatcherRecordCrud.findAll()
+        assertTrue(secondRunRecords.size > firstRunCount, 
+            "Should create new records when file size changes")
+
+        assertEquals(1, firstRunRecords.filter { it.fullFilePath.contains(logFile1.fileName.toString()) }.size)
+        assertEquals(2, secondRunRecords.filter { it.fullFilePath.contains(logFile1.fileName.toString()) }.size)
+    }
+    
+    @Test
+    fun `test processLogWatchers creates new record when file ctime changes`() {
+        // Create a test watcher
+        val watcher = SSHLogWatcher(
+            name = "test-watcher-ctime-change",
+            sshConfigName = "test-config",
+            watchDir = toUnixPath(logsDir),
+            recurDepth = 1,
+            filePrefix = "app-",
+            fileContains = "log",
+            filePostfix = ".txt",
+            archivedLogs = true,
+            enabled = true,
+            createdAt = Timestamp(System.currentTimeMillis()),
+            updatedAt = Timestamp(System.currentTimeMillis())
+        )
+        
+        // Insert the watcher into the database
+        sshLogWatcherCrud.insert(listOf(watcher))
+        
+        // Process log watchers first time
+        sshLogWatcherService.processLogWatchers()
+        
+        // Verify records were created
+        val firstRunRecords = sshLogWatcherRecordCrud.findAll()
+        val firstRunCount = firstRunRecords.size
+        assertTrue(firstRunCount > 0, "Should create records on first run")
+        
+        // Wait a moment to ensure timestamps would be different
+        Thread.sleep(1000)
+        
+        // Touch the file to update its timestamp
+        Files.setLastModifiedTime(logFile2, 
+            java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()))
+        
+        // Process log watchers second time
+        sshLogWatcherService.processLogWatchers()
+        
+        // Verify new records were created due to ctime change
+        val secondRunRecords = sshLogWatcherRecordCrud.findAll()
+        assertTrue(secondRunRecords.size > firstRunCount, 
+            "Should create new records when file ctime changes")
+
+        assertEquals(1, firstRunRecords.filter { it.fullFilePath.contains(logFile2.fileName.toString()) }.size)
+        assertEquals(2, secondRunRecords.filter { it.fullFilePath.contains(logFile2.fileName.toString()) }.size)
+    }
+    
+    @Test
+    fun `test processLogWatchers marks file as DUPLICATED when same hash exists on different path`() {
+        // Create a test watcher that includes both the main logs directory and subdirectory
+        val watcher = SSHLogWatcher(
+            name = "test-watcher-duplicates",
+            sshConfigName = "test-config",
+            watchDir = toUnixPath(logsDir),
+            recurDepth = 2, // Include subdirectories
+            filePrefix = "app-",
+            fileContains = "log",
+            filePostfix = ".txt",
+            archivedLogs = true,
+            enabled = true,
+            createdAt = Timestamp(System.currentTimeMillis()),
+            updatedAt = Timestamp(System.currentTimeMillis())
+        )
+
+        // Insert the watcher into the database
+        sshLogWatcherCrud.insert(listOf(watcher))
+
+        // Process log watchers first to create records for existing files
+        sshLogWatcherService.processLogWatchers()
+
+        // Create a duplicate file with the same name but in a different location
+        // The hash is calculated based on filename, size, and ctime, so we need to use the same filename
+        val duplicateFilePath = subDir1.resolve(logFile1.fileName.toString())
+        
+        // Copy the file directly to preserve all attributes including timestamps
+        Files.copy(logFile1, duplicateFilePath)
+
+        // Process log watchers again to detect the duplicate
+        sshLogWatcherService.processLogWatchers()
+
+        // Verify records were created
+        val records = sshLogWatcherRecordCrud.findAll()
+
+        // Find the record for the duplicate file (in the subdirectory)
+        val duplicateRecord = records.find { it.fullFilePath.contains("subdir1") && it.fullFilePath.contains(logFile1.fileName.toString()) }
+        assertNotNull(duplicateRecord, "Should find a record for the duplicate file")
+
+        // Verify the duplicate file is marked as DUPLICATED
+        assertEquals("DUPLICATED", duplicateRecord.consumptionStatus, "Duplicate file should be marked as DUPLICATED")
+
+        // Verify the duplicatedFile field references the original file
+        assertNotNull(duplicateRecord.duplicatedFile, "Duplicated file reference should not be null")
+        assertTrue(duplicateRecord.duplicatedFile.contains(logFile1.fileName.toString()) && !duplicateRecord.duplicatedFile.contains("subdir1"),
+            "Duplicated file should reference the original file")
     }
 }

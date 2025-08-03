@@ -12,6 +12,8 @@ import org.apache.lucene.index.IndexWriterConfig
 import org.apache.lucene.index.Term
 import org.apache.lucene.store.Directory
 import org.apache.lucene.store.FSDirectory
+import org.apache.lucene.store.MMapDirectory
+import org.apache.lucene.store.NIOFSDirectory
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.io.BufferedReader
@@ -20,8 +22,14 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.security.MessageDigest
+import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.zip.GZIPInputStream
 import javax.sql.DataSource
+import kotlin.math.max
+import kotlin.math.min
+import kotlinx.coroutines.*
 
 @Service
 class LuceneIngestionService(
@@ -58,7 +66,9 @@ class LuceneIngestionService(
     /**
      * Ingest records from SSHLogWatcherRecords table
      * This method will process all records with consumption status "NEW"
+     * Each watcher's records are processed in parallel using coroutines
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun ingestRecords() {
         logger.info("Starting ingestion of SSHLogWatcherRecords")
         
@@ -73,12 +83,41 @@ class LuceneIngestionService(
             // Group records by watcher name
             val recordsByWatcher = newRecords.groupBy { it.sshLogWatcherName }
             
-            // Process each group
-            recordsByWatcher.forEach { (watcherName, records) ->
-                try {
-                    processRecordsForWatcher(watcherName, records)
-                } catch (e: Exception) {
-                    logger.error("Error processing records for watcher $watcherName: ${e.message}", e)
+            logger.info("Processing ${recordsByWatcher.size} watchers in parallel")
+            
+            // Use a coroutine dispatcher with a fixed thread pool size
+            val dispatcher = Dispatchers.Default.limitedParallelism(
+                // Use the smaller of: number of watchers or available processors
+                max(recordsByWatcher.size, 1)
+            )
+            
+            // Run in a coroutine scope with SupervisorJob to prevent child failures from cancelling parent
+            runBlocking {
+                // Create a supervisor scope that won't cancel children when one fails
+                supervisorScope {
+                    // Create a list to track all deferred results
+                    val watcherJobs = mutableListOf<Job>()
+                    
+                    // Launch each watcher's records for parallel processing
+                    recordsByWatcher.forEach { (watcherName, records) ->
+                        val job = launch(dispatcher) {
+                            try {
+                                processRecordsForWatcher(watcherName, records)
+                            } catch (e: Exception) {
+                                logger.error("Error processing records for watcher $watcherName: ${e.message}", e)
+                            }
+                        }
+                        watcherJobs.add(job)
+                    }
+                    
+                    // Wait for all watcher tasks to complete
+                    watcherJobs.forEach { job ->
+                        try {
+                            job.join()
+                        } catch (e: Exception) {
+                            logger.error("Error waiting for watcher task: ${e.message}", e)
+                        }
+                    }
                 }
             }
             
@@ -92,9 +131,10 @@ class LuceneIngestionService(
     }
     
     /**
-     * Process records for a specific watcher
+     * Process records for a specific watcher using coroutines for parallelization
      */
-    private fun processRecordsForWatcher(watcherName: String, records: List<SSHLogWatcherRecord>) {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun processRecordsForWatcher(watcherName: String, records: List<SSHLogWatcherRecord>) {
         logger.info("Processing ${records.size} records for watcher: $watcherName")
         
         // Get the watcher configuration
@@ -114,38 +154,61 @@ class LuceneIngestionService(
         // Get or create index writer for this watcher
         val indexWriter = getIndexWriter(watcher.name)
         
-        // Counter for successful updates
-        var successfulUpdates = 0
-        // Counter for total documents processed
-        var totalDocsProcessed = 0
+        // Counter for successful updates (using atomic to handle concurrent updates)
+        val successfulUpdates = AtomicInteger(0)
+        // Counter for total documents processed (using atomic to handle concurrent updates)
+        val totalDocsProcessed = AtomicInteger(0)
         
-        // Process each record
-        records.forEach { record ->
-            try {
-                val docsProcessed = processRecord(record, watcher, sshConfig, indexWriter)
-                
-                // Update record status to "INDEXED"
-                val updatedRecord = record.copy(consumptionStatus = "INDEXED")
-                // Commit changes to the index
-                indexWriter.commit()
-                sshLogWatcherRecordCrud.update(listOf(updatedRecord))
-                
-                // Increment successful updates counter
-                successfulUpdates++
-                // Add to total documents processed
-                totalDocsProcessed += docsProcessed
-                
-            } catch (e: Exception) {
-                logger.error("Error processing record ${record.id} for watcher $watcherName: ${e.message}", e)
-                
-                // Update record status to "ERROR"
-                val updatedRecord = record.copy(consumptionStatus = "ERROR")
-                sshLogWatcherRecordCrud.update(listOf(updatedRecord))
+        // Create a coroutine dispatcher with a fixed thread pool size of 5
+        val dispatcher = Dispatchers.Default.limitedParallelism(5)
+        
+        // Collect all records to update
+        val recordsToUpdate = Collections.synchronizedList(mutableListOf<SSHLogWatcherRecord>())
+        
+        // Process records in parallel using coroutines
+        coroutineScope {
+            // Launch a coroutine for each record
+            val jobs = records.map { record ->
+                launch(dispatcher) {
+                    try {
+                        val docsProcessed = processRecord(record, watcher, sshConfig, indexWriter)
+                        
+                        // Create updated record but don't update DB yet
+                        val updatedRecord = record.copy(consumptionStatus = "INDEXED")
+
+                        indexWriter.commit()
+                        
+                        // Add to records to update
+                        recordsToUpdate.add(updatedRecord)
+                        
+                        // Update counters
+                        successfulUpdates.incrementAndGet()
+                        totalDocsProcessed.addAndGet(docsProcessed)
+                    } catch (e: Exception) {
+                        logger.error("Error processing record ${record.id} for watcher $watcherName: ${e.message}", e)
+                        
+                        // Create error record but don't update DB yet
+                        val updatedRecord = record.copy(consumptionStatus = "ERROR")
+                        
+                        // Add to records to update
+                        recordsToUpdate.add(updatedRecord)
+                    }
+                }
             }
+            
+            // Wait for all coroutines to complete
+            jobs.forEach { it.join() }
+        }
+
+
+        
+        // Update all records in a single batch after all processing is complete
+        if (recordsToUpdate.isNotEmpty()) {
+            sshLogWatcherRecordCrud.update(recordsToUpdate)
         }
         
         // Log the number of successful updates and documents processed for this watcher
-        logger.info("Completed processing for watcher: $watcherName - $successfulUpdates successful updates out of ${records.size} records, $totalDocsProcessed log documents inserted/updated")
+        logger.info("Completed processing for watcher: $watcherName - ${successfulUpdates.get()} successful updates out of ${records.size} records, ${totalDocsProcessed.get()} log documents inserted/updated")
     }
     
     /**
@@ -187,7 +250,15 @@ class LuceneIngestionService(
         try {
             // Get file stream via SSH
             val inputStream = sshCommandRunner.getFileStream(sshConfig, filePath)
-            val reader = BufferedReader(InputStreamReader(inputStream))
+            
+            // Check if the file is gzipped and wrap with GZIPInputStream if needed
+            val processedInputStream = if (filePath.endsWith(".gz")) {
+                GZIPInputStream(inputStream)
+            } else {
+                inputStream
+            }
+            
+            val reader = BufferedReader(InputStreamReader(processedInputStream))
             
             // Regex to match timestamp at the beginning of a log line
             // Format: YYYY-MM-DD HH:MM:SS.SSS
@@ -319,12 +390,14 @@ class LuceneIngestionService(
             
             // Create config
             val config = IndexWriterConfig(analyzer)
+            config.ramBufferSizeMB = 256.0
+            config.maxBufferedDocs = 100000
             config.openMode = IndexWriterConfig.OpenMode.CREATE_OR_APPEND
             
             // Create writer
             val writer = IndexWriter(directory, config)
             logger.info("Created IndexWriter for watcher $watcherName")
-            
+
             writer
         }
     }

@@ -196,6 +196,13 @@
             <artifactId>jackson-module-kotlin</artifactId>
             <version>2.15.2</version> <!-- Use the latest version -->
         </dependency>
+        
+        <!-- Kotlin Coroutines -->
+        <dependency>
+            <groupId>org.jetbrains.kotlinx</groupId>
+            <artifactId>kotlinx-coroutines-core-jvm</artifactId>
+            <version>1.8.0</version>
+        </dependency>
     </dependencies>
 
     <build>

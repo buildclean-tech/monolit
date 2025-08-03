@@ -14,9 +14,11 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Timestamp
+import java.util.zip.GZIPOutputStream
 import javax.sql.DataSource
 
 /**
@@ -299,5 +301,43 @@ class LuceneIngestionServiceTest {
             username = "testuser",
             password = "testpass"
         )
+    }
+    
+    @Test
+    fun `test ingestRecords processes gzipped files`() {
+        // Create test data with a gzipped file path
+        val gzippedFilePath = "/var/log/test.log.gz"
+        val testRecord = createTestRecord(1L, "NEW").copy(fullFilePath = gzippedFilePath)
+        val testWatcher = createTestWatcher()
+        val testConfig = createTestConfig()
+        
+        // Create gzipped content
+        val gzippedContent = createGzippedContent(testFileContent)
+        
+        // Setup mocks
+        whenever(sshLogWatcherRecordCrud.findByColumnValues(mapOf(SSHLogWatcherRecord::consumptionStatus to "NEW")))
+            .thenReturn(listOf(testRecord))
+        whenever(sshLogWatcherCrud.findByPrimaryKey(testWatcherName)).thenReturn(testWatcher)
+        whenever(sshConfigCrud.findByPrimaryKey(testConfigName)).thenReturn(testConfig)
+        whenever(sshCommandRunner.getFileStream(eq(testConfig), eq(gzippedFilePath))).thenReturn(
+            ByteArrayInputStream(gzippedContent)
+        )
+        
+        // Execute the method under test
+        service.ingestRecords()
+        
+        // No assertions needed - we're just verifying it doesn't throw an exception
+        // If our gzip handling code is working, the service will successfully process the gzipped file
+    }
+    
+    /**
+     * Helper method to create gzipped content
+     */
+    private fun createGzippedContent(content: String): ByteArray {
+        val byteArrayOutputStream = ByteArrayOutputStream()
+        GZIPOutputStream(byteArrayOutputStream).use { gzipOutputStream ->
+            gzipOutputStream.write(content.toByteArray())
+        }
+        return byteArrayOutputStream.toByteArray()
     }
 }

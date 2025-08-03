@@ -159,8 +159,8 @@ class LuceneIngestionService(
         // Counter for total documents processed (using atomic to handle concurrent updates)
         val totalDocsProcessed = AtomicInteger(0)
         
-        // Create a coroutine dispatcher with a fixed thread pool size of 5
-        val dispatcher = Dispatchers.Default.limitedParallelism(5)
+        // Create a coroutine dispatcher with a fixed thread pool size of availableProcessors
+        val dispatcher = Dispatchers.Default.limitedParallelism(Runtime.getRuntime().availableProcessors())
         
         // Collect all records to update
         val recordsToUpdate = Collections.synchronizedList(mutableListOf<SSHLogWatcherRecord>())
@@ -356,14 +356,15 @@ class LuceneIngestionService(
         doc.add(StringField("logStrTimestamp", timestamp, Field.Store.YES))
         // Add the parsed timestamp as a long field
         doc.add(LongField("logLongTimestamp", timestampLong ?: 0L, Field.Store.YES))
+        // Store original values but index lowercase versions for case-insensitive search
+        doc.add(StringField("logPath", filePath.lowercase(), Field.Store.YES))
+        doc.add(TextField("content", logEntry.lowercase(), Field.Store.YES))
+
         doc.add(LongField("ingestionLongTimestamp", System.currentTimeMillis(), Field.Store.NO))
         doc.add(StringField("sshConfigServer", sshConfig.serverHost, Field.Store.NO))
         doc.add(StringField("sshConfigName", sshConfig.name, Field.Store.NO))
         doc.add(StringField("sshWatcherName", record.sshLogWatcherName, Field.Store.NO))
         doc.add(LongField("sshWatcherRecordId", record.id!!, Field.Store.NO))
-        // Store original values but index lowercase versions for case-insensitive search
-        doc.add(TextField("logPath", filePath.lowercase(), Field.Store.YES))
-        doc.add(TextField("content", logEntry.lowercase(), Field.Store.YES))
 
         // Add the document to the index
         // Use contentMD5Hash as the unique identifier to avoid duplicates

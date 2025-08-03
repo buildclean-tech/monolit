@@ -277,7 +277,9 @@ class LuceneIngestionServiceTest {
             fileSize = 1024L,
             cTime = Timestamp(System.currentTimeMillis()),
             fileHash = testFileHash,
-            consumptionStatus = status
+            consumptionStatus = status,
+            fileName = "test.log",
+            noOfIndexedDocuments = null
         )
     }
 

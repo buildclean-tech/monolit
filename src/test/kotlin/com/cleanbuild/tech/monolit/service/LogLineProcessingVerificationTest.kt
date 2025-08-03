@@ -214,7 +214,9 @@ class LogLineProcessingVerificationTest {
             fileSize = 1024L,
             cTime = Timestamp(System.currentTimeMillis()),
             fileHash = "sample-log-hash",
-            consumptionStatus = status
+            consumptionStatus = status,
+            fileName = "test.log",
+            noOfIndexedDocuments = null
         )
     }
 

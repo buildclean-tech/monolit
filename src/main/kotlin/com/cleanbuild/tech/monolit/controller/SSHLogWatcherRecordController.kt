@@ -163,6 +163,7 @@ class SSHLogWatcherRecordController(private val dataSource: DataSource) {
                             <thead>
                                 <tr>
                                     <th>ID</th>
+                                    <th>File Name</th>
                                     <th>File Path</th>
                                     <th>File Size</th>
                                     <th>File Time</th>
@@ -170,6 +171,7 @@ class SSHLogWatcherRecordController(private val dataSource: DataSource) {
                                     <th>Created Time</th>
                                     <th>Updated Time</th>
                                     <th>Status</th>
+                                    <th>Indexed Docs</th>
                                     <th>Duplicated File</th>
                                 </tr>
                             </thead>
@@ -178,6 +180,7 @@ class SSHLogWatcherRecordController(private val dataSource: DataSource) {
                                     """
                                     <tr>
                                         <td>${record.id}</td>
+                                        <td>${record.fileName ?: "-"}</td>
                                         <td>${record.fullFilePath}</td>
                                         <td>${record.fileSize}</td>
                                         <td>${formatTimestamp(record.cTime)}</td>
@@ -185,6 +188,7 @@ class SSHLogWatcherRecordController(private val dataSource: DataSource) {
                                         <td>${formatTimestamp(record.createdTime)}</td>
                                         <td>${formatTimestamp(record.updatedTime)}</td>
                                         <td>${record.consumptionStatus}</td>
+                                        <td>${record.noOfIndexedDocuments ?: "-"}</td>
                                         <td>${record.duplicatedFile ?: "-"}</td>
                                     </tr>
                                     """

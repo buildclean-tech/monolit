@@ -156,7 +156,9 @@ class SSHLogWatcherService(
                     cTime = Timestamp(file.ctime),
                     fileHash = fileHash,
                     consumptionStatus = if (duplicatedFile != null) "DUPLICATED" else "NEW",
-                    duplicatedFile = duplicatedFile
+                    duplicatedFile = duplicatedFile,
+                    fileName = file.filename,
+                    noOfIndexedDocuments = null
                 )
                 sshLogWatcherRecordCrud.insert(listOf(record))
                 logger.info("Created new record for file: ${file.filepath}")

@@ -174,7 +174,11 @@ class LuceneIngestionService(
                         val docsProcessed = processRecord(record, watcher, sshConfig, indexWriter)
                         
                         // Create updated record but don't update DB yet
-                        val updatedRecord = record.copy(consumptionStatus = "INDEXED")
+                        val updatedRecord = record.copy(
+                            consumptionStatus = "INDEXED",
+                            fileName = record.fileName ?: record.fullFilePath.substringAfterLast('/'),
+                            noOfIndexedDocuments = docsProcessed.toLong()
+                        )
 
                         indexWriter.commit()
                         
@@ -188,7 +192,11 @@ class LuceneIngestionService(
                         logger.error("Error processing record ${record.id} for watcher $watcherName: ${e.message}", e)
                         
                         // Create error record but don't update DB yet
-                        val updatedRecord = record.copy(consumptionStatus = "ERROR")
+                        val updatedRecord = record.copy(
+                            consumptionStatus = "ERROR",
+                            fileName = record.fileName ?: record.fullFilePath.substringAfterLast('/'),
+                            noOfIndexedDocuments = 0L
+                        )
                         
                         // Add to records to update
                         recordsToUpdate.add(updatedRecord)

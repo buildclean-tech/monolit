@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS SSHLogWatcherRecord (
     updatedTime TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     consumptionStatus VARCHAR(50) NOT NULL,
     duplicatedFile VARCHAR(1024),
+    fileName VARCHAR(255),
+    noOfIndexedDocuments BIGINT,
     FOREIGN KEY (sshLogWatcherName) REFERENCES SSHLogWatcher(name)
 );
 

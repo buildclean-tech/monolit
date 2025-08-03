@@ -229,7 +229,9 @@ class LuceneIngestionServiceEnhancedTest {
             fileSize = 1024L,
             cTime = Timestamp(System.currentTimeMillis()),
             fileHash = testFileHash,
-            consumptionStatus = "NEW"
+            consumptionStatus = "NEW",
+            fileName = "test.log",
+            noOfIndexedDocuments = null
         )
         sshLogWatcherRecordCrud.insert(listOf(sshLogWatcherRecord))
     }
@@ -436,7 +438,9 @@ class LuceneIngestionServiceEnhancedTest {
             fileSize = 1024L,
             cTime = Timestamp(System.currentTimeMillis()),
             fileHash = "error-hash-${UUID.randomUUID()}",
-            consumptionStatus = "NEW"
+            consumptionStatus = "NEW",
+            fileName = "file.log",
+            noOfIndexedDocuments = null
         )
         sshLogWatcherRecordCrud.insert(listOf(errorRecord))
         
@@ -506,7 +510,9 @@ class LuceneIngestionServiceEnhancedTest {
                 fileSize = 1024L + i,
                 cTime = Timestamp(System.currentTimeMillis() + i * 1000),
                 fileHash = "$testFileHash.$i",
-                consumptionStatus = "NEW"
+                consumptionStatus = "NEW",
+                fileName = "test.log.$i",
+                noOfIndexedDocuments = null
             )
         }
         sshLogWatcherRecordCrud.insert(additionalRecords)
@@ -557,7 +563,9 @@ class LuceneIngestionServiceEnhancedTest {
             fileSize = 2048L,
             cTime = Timestamp(System.currentTimeMillis()),
             fileHash = "gzip-hash-${UUID.randomUUID()}",
-            consumptionStatus = "NEW"
+            consumptionStatus = "NEW",
+            fileName = "test.log.gz",
+            noOfIndexedDocuments = null
         )
         sshLogWatcherRecordCrud.insert(listOf(gzipRecord))
         

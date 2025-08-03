@@ -26,6 +26,7 @@ import javax.sql.DataSource
 import kotlin.math.max
 import kotlinx.coroutines.*
 import org.apache.lucene.analysis.CharArraySet
+import kotlin.math.min
 
 @Service
 open class LuceneIngestionService(
@@ -156,10 +157,8 @@ open class LuceneIngestionService(
         val totalDocsProcessed = AtomicInteger(0)
         
         // Create a coroutine dispatcher with a fixed thread pool size
-        val dispatcher = Dispatchers.Default.limitedParallelism(Runtime.getRuntime().availableProcessors())
-        
-        // Collect all records to update
-        val recordsToUpdate = Collections.synchronizedList(mutableListOf<SSHLogWatcherRecord>())
+        val dispatcher = Dispatchers.Default.limitedParallelism(
+            min(records.size, Runtime.getRuntime().availableProcessors()))
         
         // Process records in parallel using coroutines
         coroutineScope {
@@ -177,9 +176,9 @@ open class LuceneIngestionService(
                         )
 
                         indexWriter.commit()
-                        
+
                         // Add to records to update
-                        recordsToUpdate.add(updatedRecord)
+                        sshLogWatcherRecordCrud.update(listOf(updatedRecord))
                         
                         // Update counters
                         successfulUpdates.incrementAndGet()
@@ -195,7 +194,7 @@ open class LuceneIngestionService(
                         )
                         
                         // Add to records to update
-                        recordsToUpdate.add(updatedRecord)
+                        sshLogWatcherRecordCrud.update(listOf(updatedRecord))
                     }
                 }
             }
@@ -205,11 +204,6 @@ open class LuceneIngestionService(
         }
 
 
-        
-        // Update all records in a single batch after all processing is complete
-        if (recordsToUpdate.isNotEmpty()) {
-            sshLogWatcherRecordCrud.update(recordsToUpdate)
-        }
         
         // Log the number of successful updates and documents processed for this watcher
         logger.info("Completed processing for watcher: $watcherName - ${successfulUpdates.get()} successful updates out of ${records.size} records, ${totalDocsProcessed.get()} log documents inserted/updated")

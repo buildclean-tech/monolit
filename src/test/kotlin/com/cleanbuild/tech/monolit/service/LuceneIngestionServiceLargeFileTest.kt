@@ -3,7 +3,7 @@ package com.cleanbuild.tech.monolit.service
 import com.cleanbuild.tech.monolit.DbRecord.SSHConfig
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcher
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcherRecord
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository.CRUDOperation
+import com.cleanbuild.tech.monolit.repository.CRUDOperation
 import com.cleanbuild.tech.monolit.ssh.SSHCommandRunner
 import org.apache.lucene.document.Document
 import org.apache.lucene.index.DirectoryReader
@@ -208,7 +208,7 @@ class LuceneIngestionServiceLargeFileTest {
             fileHash = testFileHash,
             consumptionStatus = "NEW",
             fileName = "large-test.log",
-            noOfIndexedDocuments = null
+            noOfIndexedDocuments = 0
         )
         sshLogWatcherRecordCrud.insert(listOf(sshLogWatcherRecord))
     }
@@ -494,7 +494,7 @@ class LuceneIngestionServiceLargeFileTest {
             fileHash = "gzip-hash-${UUID.randomUUID()}",
             consumptionStatus = "NEW",
             fileName = "large-test.log.gz",
-            noOfIndexedDocuments = null
+            noOfIndexedDocuments = 0
         )
         sshLogWatcherRecordCrud.insert(listOf(gzipRecord))
         
@@ -585,7 +585,7 @@ class LuceneIngestionServiceLargeFileTest {
                 fileHash = "parallel-hash-$index-${UUID.randomUUID()}",
                 consumptionStatus = "NEW",
                 fileName = "large-test-$index.log",
-                noOfIndexedDocuments = null
+                noOfIndexedDocuments = 0
             )
         }
         sshLogWatcherRecordCrud.insert(records)

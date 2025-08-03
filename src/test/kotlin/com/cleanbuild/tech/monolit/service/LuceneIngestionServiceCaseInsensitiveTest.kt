@@ -3,7 +3,7 @@ package com.cleanbuild.tech.monolit.service
 import com.cleanbuild.tech.monolit.DbRecord.SSHConfig
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcher
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcherRecord
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository.CRUDOperation
+import com.cleanbuild.tech.monolit.repository.CRUDOperation
 import com.cleanbuild.tech.monolit.ssh.SSHCommandRunner
 import org.apache.lucene.document.Document
 import org.apache.lucene.index.DirectoryReader
@@ -171,7 +171,7 @@ class LuceneIngestionServiceCaseInsensitiveTest {
             fileHash = testFileHash,
             consumptionStatus = status,
             fileName = "test.log",
-            noOfIndexedDocuments = null
+            noOfIndexedDocuments = 0
         )
     }
     

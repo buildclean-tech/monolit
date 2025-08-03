@@ -1,8 +1,9 @@
 package com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository
 
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.Generated
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.PrimaryKey
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.SqlTable
+import com.cleanbuild.tech.monolit.DbEntity.Generated
+import com.cleanbuild.tech.monolit.DbEntity.PrimaryKey
+import com.cleanbuild.tech.monolit.DbEntity.SqlTable
+import com.cleanbuild.tech.monolit.repository.CRUDOperation
 import org.h2.jdbcx.JdbcDataSource
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach

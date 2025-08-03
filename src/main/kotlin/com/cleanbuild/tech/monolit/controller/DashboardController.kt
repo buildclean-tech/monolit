@@ -1,7 +1,7 @@
 package com.cleanbuild.tech.monolit.controller
 
 import com.cleanbuild.tech.monolit.DbRecord.SSHConfig
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository.CRUDOperation
+import com.cleanbuild.tech.monolit.repository.CRUDOperation
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*

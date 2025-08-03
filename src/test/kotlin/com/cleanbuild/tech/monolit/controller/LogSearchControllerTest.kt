@@ -1,7 +1,7 @@
 package com.cleanbuild.tech.monolit.controller
 
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcher
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository.CRUDOperation
+import com.cleanbuild.tech.monolit.repository.CRUDOperation
 import com.cleanbuild.tech.monolit.service.LuceneIngestionService
 import org.apache.lucene.document.Document
 import org.apache.lucene.document.Field

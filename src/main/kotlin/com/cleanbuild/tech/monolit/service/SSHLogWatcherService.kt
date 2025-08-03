@@ -3,7 +3,7 @@ package com.cleanbuild.tech.monolit.service
 import com.cleanbuild.tech.monolit.DbRecord.SSHConfig
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcher
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcherRecord
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository.CRUDOperation
+import com.cleanbuild.tech.monolit.repository.CRUDOperation
 import com.cleanbuild.tech.monolit.ssh.SSHCommandRunner
 import org.jetbrains.kotlin.util.Time
 import org.slf4j.LoggerFactory
@@ -158,7 +158,7 @@ class SSHLogWatcherService(
                     consumptionStatus = if (duplicatedFile != null) "DUPLICATED" else "NEW",
                     duplicatedFile = duplicatedFile,
                     fileName = file.filename,
-                    noOfIndexedDocuments = null
+                    noOfIndexedDocuments = 0
                 )
                 sshLogWatcherRecordCrud.insert(listOf(record))
                 logger.info("Created new record for file: ${file.filepath}")

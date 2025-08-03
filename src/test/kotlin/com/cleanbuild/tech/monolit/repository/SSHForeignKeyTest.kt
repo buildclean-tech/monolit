@@ -2,7 +2,7 @@ package com.cleanbuild.tech.monolit.repository
 
 import com.cleanbuild.tech.monolit.DbRecord.SSHConfig
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcher
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository.CRUDOperation
+import com.cleanbuild.tech.monolit.repository.CRUDOperation
 import org.h2.jdbcx.JdbcDataSource
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach

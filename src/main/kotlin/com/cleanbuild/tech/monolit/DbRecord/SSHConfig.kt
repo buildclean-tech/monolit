@@ -1,6 +1,6 @@
 package com.cleanbuild.tech.monolit.DbRecord
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.PrimaryKey
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.SqlTable
+import com.cleanbuild.tech.monolit.DbEntity.PrimaryKey
+import com.cleanbuild.tech.monolit.DbEntity.SqlTable
 import java.sql.Timestamp
 import java.time.LocalDateTime
 

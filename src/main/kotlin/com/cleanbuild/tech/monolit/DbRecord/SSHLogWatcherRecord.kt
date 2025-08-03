@@ -1,7 +1,7 @@
 package com.cleanbuild.tech.monolit.DbRecord
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.Generated
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.PrimaryKey
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.SqlTable
+import com.cleanbuild.tech.monolit.DbEntity.Generated
+import com.cleanbuild.tech.monolit.DbEntity.PrimaryKey
+import com.cleanbuild.tech.monolit.DbEntity.SqlTable
 import java.sql.Timestamp
 
 @SqlTable(tableName = "SSHLogWatcherRecord")
@@ -17,9 +17,9 @@ data class SSHLogWatcherRecord(
     val createdTime: Timestamp = Timestamp(System.currentTimeMillis()),
     val updatedTime: Timestamp = Timestamp(System.currentTimeMillis()),
     val consumptionStatus: String,
+    val fileName: String,
+    val noOfIndexedDocuments: Long,
     val duplicatedFile: String? = null,
-    val fileName: String? = null,
-    val noOfIndexedDocuments: Long? = null
 ) {
     override fun toString(): String {
         return "SSHLogWatcherRecord(id=$id, sshLogWatcherName='$sshLogWatcherName', " +

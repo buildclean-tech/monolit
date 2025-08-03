@@ -2,7 +2,7 @@ package com.cleanbuild.tech.monolit.config
 
 import com.cleanbuild.tech.monolit.DbRecord.SSHConfig
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcher
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository.CRUDOperation
+import com.cleanbuild.tech.monolit.repository.CRUDOperation
 import com.cleanbuild.tech.monolit.service.LuceneIngestionService
 import com.cleanbuild.tech.monolit.service.SSHLogWatcherService
 import com.cleanbuild.tech.monolit.ssh.SSHCommandRunner

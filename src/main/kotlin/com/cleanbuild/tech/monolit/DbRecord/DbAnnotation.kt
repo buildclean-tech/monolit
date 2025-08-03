@@ -1,4 +1,4 @@
-package com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity
+package com.cleanbuild.tech.monolit.DbEntity
 
 /**
  * Marks a data class as a database table entity.

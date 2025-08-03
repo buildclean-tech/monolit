@@ -3,7 +3,7 @@ package com.cleanbuild.tech.monolit.service
 import com.cleanbuild.tech.monolit.DbRecord.SSHConfig
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcher
 import com.cleanbuild.tech.monolit.DbRecord.SSHLogWatcherRecord
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository.CRUDOperation
+import com.cleanbuild.tech.monolit.repository.CRUDOperation
 import com.cleanbuild.tech.monolit.ssh.SSHCommandRunner
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -279,7 +279,7 @@ class LuceneIngestionServiceTest {
             fileHash = testFileHash,
             consumptionStatus = status,
             fileName = "test.log",
-            noOfIndexedDocuments = null
+            noOfIndexedDocuments = 0
         )
     }
 

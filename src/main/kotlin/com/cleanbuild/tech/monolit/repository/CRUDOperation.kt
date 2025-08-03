@@ -1,8 +1,8 @@
-package com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.repository
+package com.cleanbuild.tech.monolit.repository
 
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.Generated
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.PrimaryKey
-import com.cleanbuild.tech.monolit.com.cleanbuild.tech.monolit.DbEntity.SqlTable
+import com.cleanbuild.tech.monolit.DbEntity.Generated
+import com.cleanbuild.tech.monolit.DbEntity.PrimaryKey
+import com.cleanbuild.tech.monolit.DbEntity.SqlTable
 import java.io.Serializable
 import javax.sql.DataSource
 import kotlin.reflect.KClass
@@ -166,7 +166,16 @@ open class CRUDOperation<T:Any>(private val dataSource: DataSource, private val 
                     val params = constructor.parameters.associateWith { param ->
                         val propName = param.name ?: throw IllegalArgumentException("Constructor parameter must have a name")
                         val columnValue = resultSet.getObject(propName)
-                        columnValue
+                        
+                        // Handle type conversion for primitive types
+                        when (param.type.classifier) {
+                            Int::class -> if (columnValue != null) (columnValue as Number).toInt() else 0
+                            Long::class -> if (columnValue != null) (columnValue as Number).toLong() else 0L
+                            Float::class -> if (columnValue != null) (columnValue as Number).toFloat() else 0.0f
+                            Double::class -> if (columnValue != null) (columnValue as Number).toDouble() else 0.0
+                            Boolean::class -> if (columnValue != null) columnValue as Boolean else false
+                            else -> columnValue
+                        }
                     }
                 
                     val instance = constructor.callBy(params)
@@ -214,7 +223,16 @@ open class CRUDOperation<T:Any>(private val dataSource: DataSource, private val 
                     val params = constructor.parameters.associateWith { param ->
                         val propName = param.name ?: throw IllegalArgumentException("Constructor parameter must have a name")
                         val columnValue = resultSet.getObject(propName)
-                        columnValue
+                        
+                        // Handle type conversion for primitive types
+                        when (param.type.classifier) {
+                            Int::class -> if (columnValue != null) (columnValue as Number).toInt() else 0
+                            Long::class -> if (columnValue != null) (columnValue as Number).toLong() else 0L
+                            Float::class -> if (columnValue != null) (columnValue as Number).toFloat() else 0.0f
+                            Double::class -> if (columnValue != null) (columnValue as Number).toDouble() else 0.0
+                            Boolean::class -> if (columnValue != null) columnValue as Boolean else false
+                            else -> columnValue
+                        }
                     }
                 
                     return constructor.callBy(params)
@@ -259,7 +277,16 @@ open class CRUDOperation<T:Any>(private val dataSource: DataSource, private val 
                     val params = constructor.parameters.associateWith { param ->
                         val propName = param.name ?: throw IllegalArgumentException("Constructor parameter must have a name")
                         val columnValue = resultSet.getObject(propName)
-                        columnValue
+                        
+                        // Handle type conversion for primitive types
+                        when (param.type.classifier) {
+                            Int::class -> if (columnValue != null) (columnValue as Number).toInt() else 0
+                            Long::class -> if (columnValue != null) (columnValue as Number).toLong() else 0L
+                            Float::class -> if (columnValue != null) (columnValue as Number).toFloat() else 0.0f
+                            Double::class -> if (columnValue != null) (columnValue as Number).toDouble() else 0.0
+                            Boolean::class -> if (columnValue != null) columnValue as Boolean else false
+                            else -> columnValue
+                        }
                     }
                     
                     val instance = constructor.callBy(params)

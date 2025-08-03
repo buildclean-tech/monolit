@@ -10,16 +10,12 @@ import org.apache.lucene.document.*
 import org.apache.lucene.index.IndexWriter
 import org.apache.lucene.index.IndexWriterConfig
 import org.apache.lucene.index.Term
-import org.apache.lucene.store.Directory
 import org.apache.lucene.store.FSDirectory
-import org.apache.lucene.store.MMapDirectory
-import org.apache.lucene.store.NIOFSDirectory
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.file.Files
-import java.nio.file.Path
 import java.nio.file.Paths
 import java.security.MessageDigest
 import java.util.Collections
@@ -28,11 +24,11 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.zip.GZIPInputStream
 import javax.sql.DataSource
 import kotlin.math.max
-import kotlin.math.min
 import kotlinx.coroutines.*
+import org.apache.lucene.analysis.CharArraySet
 
 @Service
-class LuceneIngestionService(
+open class LuceneIngestionService(
     private val dataSource: DataSource,
     private val sshCommandRunner: SSHCommandRunner
 ) {
@@ -159,7 +155,7 @@ class LuceneIngestionService(
         // Counter for total documents processed (using atomic to handle concurrent updates)
         val totalDocsProcessed = AtomicInteger(0)
         
-        // Create a coroutine dispatcher with a fixed thread pool size of availableProcessors
+        // Create a coroutine dispatcher with a fixed thread pool size
         val dispatcher = Dispatchers.Default.limitedParallelism(Runtime.getRuntime().availableProcessors())
         
         // Collect all records to update
@@ -347,7 +343,7 @@ class LuceneIngestionService(
         timestamp: String
     ) {
         // Create content string for hashing (including timestamp and server)
-        val contentForHash = "${sshConfig.serverHost}|${sshConfig.name}$logEntry|$timestamp|"
+        val contentForHash = "${sshConfig.serverHost}|${sshConfig.name}${record.fileName}$logEntry|$timestamp|"
         
         // Generate MD5 hash as unique identifier
         val contentMD5Hash = generateMD5Hash(contentForHash)
@@ -365,8 +361,8 @@ class LuceneIngestionService(
         // Add the parsed timestamp as a long field
         doc.add(LongField("logLongTimestamp", timestampLong ?: 0L, Field.Store.YES))
         // Store original values but index lowercase versions for case-insensitive search
-        doc.add(StringField("logPath", filePath.lowercase(), Field.Store.YES))
-        doc.add(TextField("content", logEntry.lowercase(), Field.Store.YES))
+        doc.add(StringField("logPath", filePath, Field.Store.YES))
+        doc.add(TextField("content", logEntry, Field.Store.YES))
 
         doc.add(LongField("ingestionLongTimestamp", System.currentTimeMillis(), Field.Store.NO))
         doc.add(StringField("sshConfigServer", sshConfig.serverHost, Field.Store.NO))
@@ -395,12 +391,11 @@ class LuceneIngestionService(
             val directory = FSDirectory.open(indexDir)
             
             // Create analyzer
-            val analyzer = StandardAnalyzer()
+            val analyzer = StandardAnalyzer(CharArraySet.EMPTY_SET)
             
             // Create config
             val config = IndexWriterConfig(analyzer)
-            config.ramBufferSizeMB = 256.0
-            config.maxBufferedDocs = 100000
+            config.ramBufferSizeMB = 512.0
             config.openMode = IndexWriterConfig.OpenMode.CREATE_OR_APPEND
             
             // Create writer

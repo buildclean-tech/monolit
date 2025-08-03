@@ -338,17 +338,17 @@ class SSHLogWatcherServiceTest {
     fun `test calculateFileHash produces consistent results`() {
         // Use reflection to access the private method
         val calculateFileHashMethod = SSHLogWatcherService::class.java.getDeclaredMethod(
-            "calculateFileHash", String::class.java, Long::class.java, Long::class.java
+            "calculateFileHash", String::class.java, String::class.java, Long::class.java, Long::class.java
         )
         calculateFileHashMethod.isAccessible = true
         
         // Call the method with the same inputs multiple times
         val hash1 = calculateFileHashMethod.invoke(
-            sshLogWatcherService, "test.txt", 1024L, 1625097600000L
+            sshLogWatcherService, "test-watcher", "test.txt", 1024L, 1625097600000L
         ) as String
         
         val hash2 = calculateFileHashMethod.invoke(
-            sshLogWatcherService, "test.txt", 1024L, 1625097600000L
+            sshLogWatcherService, "test-watcher", "test.txt", 1024L, 1625097600000L
         ) as String
         
         // Verify the hashes are the same
@@ -356,7 +356,7 @@ class SSHLogWatcherServiceTest {
         
         // Call the method with different inputs
         val hash3 = calculateFileHashMethod.invoke(
-            sshLogWatcherService, "different.txt", 1024L, 1625097600000L
+            sshLogWatcherService, "test-watcher", "different.txt", 1024L, 1625097600000L
         ) as String
         
         // Verify the hash is different

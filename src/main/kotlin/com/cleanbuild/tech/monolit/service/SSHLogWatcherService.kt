@@ -127,7 +127,7 @@ class SSHLogWatcherService(
         logger.debug("Processing file: ${file.filepath}")
         
         // Calculate file hash
-        val fileHash = calculateFileHash(file.filename, file.size, file.ctime)
+        val fileHash = calculateFileHash(watcher.name, file.filename, file.size, file.ctime)
 
         //Check for any changes to file size or ctime
         val existingRecord = sshLogWatcherRecordCrud.findByColumnValues(mapOf(SSHLogWatcherRecord::fileHash to fileHash))
@@ -175,8 +175,8 @@ class SSHLogWatcherService(
     /**
      * Calculate a hash for the file based on its name, size, and creation time
      */
-    private fun calculateFileHash(filename: String, size: Long, ctime: Long): String {
-        val input = "$filename-$size-$ctime"
+    private fun calculateFileHash(sshWatcherName:String, filename: String, size: Long, ctime: Long): String {
+        val input = "$sshWatcherName$filename-$size-$ctime"
         val md = MessageDigest.getInstance("SHA-256")
         val hashBytes = md.digest(input.toByteArray())
         return hashBytes.joinToString("") { "%02x".format(it) }

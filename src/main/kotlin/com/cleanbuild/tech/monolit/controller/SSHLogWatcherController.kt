@@ -7,6 +7,7 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.sql.Timestamp
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.sql.DataSource
 
@@ -28,6 +29,14 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
     private fun getAllSSHConfigNames(): List<String> {
         return sshConfigCrudOperation.findAll().map { it.name }
     }
+    
+    // Get all available Java Time Zone IDs
+    @GetMapping("/timezones", produces = [MediaType.APPLICATION_JSON_VALUE])
+    fun getAllTimeZones(): List<Map<String, String>> {
+        return ZoneId.getAvailableZoneIds()
+            .sorted()
+            .map { zoneId -> mapOf("id" to zoneId, "displayName" to zoneId.replace("/", " / ")) }
+    }
 
     @GetMapping(produces = [MediaType.TEXT_HTML_VALUE])
     fun dashboard(): String {
@@ -41,6 +50,7 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>SSH Log Watcher Dashboard</title>
+            <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
             <style>
                 body {
                     font-family: Arial, sans-serif;
@@ -123,6 +133,17 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
                     border-radius: 4px;
                     box-sizing: border-box;
                 }
+                .select2-container {
+                    width: 100% !important;
+                }
+                .select2-container--default .select2-selection--single {
+                    height: 38px;
+                    padding: 5px;
+                    border: 1px solid #ddd;
+                }
+                .select2-container--default .select2-selection--single .select2-selection__arrow {
+                    height: 36px;
+                }
                 .hidden {
                     display: none;
                 }
@@ -157,6 +178,7 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
                     <a href="/dashboard" style="margin-right: 15px; color: #3498db; text-decoration: none;">SSH Configs</a>
                     <a href="/ssh-log-watcher" style="margin-right: 15px; color: #3498db; text-decoration: none;">SSH Log Watchers</a>
                     <a href="/sshlogwatcher-records" style="margin-right: 15px; color: #3498db; text-decoration: none;">SSH Log Watcher Records</a>
+                    <a href="/log-search" style="margin-right: 15px; color: #3498db; text-decoration: none;">Log Search</a>
                 </div>
                 
                 <h1>SSH Log Watcher Dashboard</h1>
@@ -218,6 +240,13 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
                             <label for="enabled">Enabled</label>
                         </div>
                         
+                        <div class="form-group">
+                            <label for="javaTimeZoneId">Java Time Zone ID:</label>
+                            <select id="javaTimeZoneId" name="javaTimeZoneId" required class="timezone-select">
+                                <option value="UTC">UTC</option>
+                            </select>
+                        </div>
+                        
                         <button type="submit" class="btn btn-success">Save</button>
                         <button type="button" id="cancel-btn" class="btn" style="display:none;">Cancel</button>
                     </form>
@@ -234,6 +263,7 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
                             <th>File Pattern</th>
                             <th>Archived Logs</th>
                             <th>Enabled</th>
+                            <th>Time Zone</th>
                             <th>Created At</th>
                             <th>Updated At</th>
                             <th>Actions</th>
@@ -250,6 +280,7 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
                                 <td>${watcher.filePrefix}*${watcher.fileContains}*${watcher.filePostfix}</td>
                                 <td>${if (watcher.archivedLogs) "Yes" else "No"}</td>
                                 <td>${if (watcher.enabled) "Yes" else "No"}</td>
+                                <td>${watcher.javaTimeZoneId}</td>
                                 <td>${formatTimestamp(watcher.createdAt)}</td>
                                 <td>${formatTimestamp(watcher.updatedAt)}</td>
                                 <td>
@@ -264,6 +295,8 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
                 </table>
             </div>
             
+            <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
             <script>
                 document.addEventListener('DOMContentLoaded', function() {
                     const form = document.getElementById('ssh-log-watcher-form');
@@ -271,6 +304,40 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
                     const formTitle = document.getElementById('form-title');
                     const cancelBtn = document.getElementById('cancel-btn');
                     const messageContainer = document.getElementById('message-container');
+                    
+                    // Initialize and populate the timezone dropdown
+                    $(document).ready(function() {
+                        // Initialize Select2
+                        $('.timezone-select').select2({
+                            placeholder: "Select a timezone",
+                            allowClear: true
+                        });
+                        
+                        // Fetch timezones from the API
+                        fetch('/ssh-log-watcher/timezones')
+                            .then(response => response.json())
+                            .then(timezones => {
+                                const select = document.getElementById('javaTimeZoneId');
+                                // Clear existing options except UTC
+                                select.innerHTML = '';
+                                
+                                // Add all timezones
+                                timezones.forEach(timezone => {
+                                    const option = document.createElement('option');
+                                    option.value = timezone.id;
+                                    option.textContent = timezone.displayName;
+                                    // Set UTC as selected by default
+                                    if (timezone.id === 'UTC') {
+                                        option.selected = true;
+                                    }
+                                    select.appendChild(option);
+                                });
+                                
+                                // Refresh Select2 to show the new options
+                                $('.timezone-select').trigger('change');
+                            })
+                            .catch(error => console.error('Error fetching timezones:', error));
+                    });
                     
                     // Form submission
                     form.addEventListener('submit', function(e) {
@@ -285,7 +352,8 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
                             fileContains: document.getElementById('fileContains').value,
                             filePostfix: document.getElementById('filePostfix').value,
                             archivedLogs: document.getElementById('archivedLogs').checked,
-                            enabled: document.getElementById('enabled').checked
+                            enabled: document.getElementById('enabled').checked,
+                            javaTimeZoneId: document.getElementById('javaTimeZoneId').value
                         };
                         
                         const mode = formMode.value;
@@ -451,6 +519,11 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
                             document.getElementById('filePostfix').value = data.filePostfix;
                             document.getElementById('archivedLogs').checked = data.archivedLogs;
                             document.getElementById('enabled').checked = data.enabled;
+                            // Set the timezone value
+                            const timezoneSelect = document.getElementById('javaTimeZoneId');
+                            timezoneSelect.value = data.javaTimeZoneId;
+                            // Refresh Select2 to show the selected option
+                            $(timezoneSelect).trigger('change');
                             
                             formMode.value = 'update';
                             formTitle.textContent = 'Edit SSH Log Watcher';
@@ -492,6 +565,10 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
                             document.getElementById('filePostfix').value = data.filePostfix;
                             document.getElementById('archivedLogs').checked = data.archivedLogs;
                             document.getElementById('enabled').checked = data.enabled;
+                            // Set the timezone value and trigger change for Select2
+                            const timezoneSelect = document.getElementById('javaTimeZoneId');
+                            timezoneSelect.value = data.javaTimeZoneId;
+                            $(timezoneSelect).trigger('change');
                             
                             // Set form mode to create since we're creating a new watcher
                             formMode.value = 'create';
@@ -506,10 +583,14 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
                     // Reset form
                     function resetForm() {
                         form.reset();
-                        document.getElementById('name').readOnly = false;
                         formMode.value = 'create';
                         formTitle.textContent = 'Create New SSH Log Watcher';
                         cancelBtn.style.display = 'none';
+                        
+                        // Reset Select2 dropdown to default (UTC)
+                        const timezoneSelect = document.getElementById('javaTimeZoneId');
+                        timezoneSelect.value = 'UTC';
+                        $(timezoneSelect).trigger('change');
                     }
                     
                     // Show message
@@ -583,6 +664,7 @@ class SSHLogWatcherController(private val dataSource: DataSource) {
             filePostfix = watcher.filePostfix,
             archivedLogs = watcher.archivedLogs,
             enabled = watcher.enabled,
+            javaTimeZoneId = watcher.javaTimeZoneId,
             createdAt = existingWatcher.createdAt,
             updatedAt = Timestamp(System.currentTimeMillis())
         )

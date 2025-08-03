@@ -170,6 +170,7 @@ class LuceneIngestionServiceEnhancedTest {
                         filePostfix VARCHAR(255) NOT NULL,
                         archivedLogs BOOLEAN DEFAULT TRUE,
                         enabled BOOLEAN DEFAULT TRUE,
+                        javaTimeZoneId VARCHAR(255) DEFAULT 'UTC',
                         createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )

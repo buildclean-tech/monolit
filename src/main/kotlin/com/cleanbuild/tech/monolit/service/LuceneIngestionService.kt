@@ -39,7 +39,9 @@ open class LuceneIngestionService(
     private val sshLogWatcherRecordCrud = CRUDOperation(dataSource, SSHLogWatcherRecord::class)
     private val sshLogWatcherCrud = CRUDOperation(dataSource, SSHLogWatcher::class)
     private val sshConfigCrud = CRUDOperation(dataSource, SSHConfig::class)
-    
+    private val timestampRegex = Regex("^\\d{4}[-/]\\d{2}[-/]\\d{2}\\s\\d{2}:\\d{2}:\\d{2}\\.\\d{3}.*")
+
+
     // Map to store IndexWriters for each watcher config
     private val indexWriters = ConcurrentHashMap<String, IndexWriter>()
     
@@ -171,7 +173,7 @@ open class LuceneIngestionService(
                         // Create updated record but don't update DB yet
                         val updatedRecord = record.copy(
                             consumptionStatus = "INDEXED",
-                            fileName = record.fileName ?: record.fullFilePath.substringAfterLast('/'),
+                            fileName = record.fileName,
                             noOfIndexedDocuments = docsProcessed.toLong()
                         )
 
@@ -189,7 +191,7 @@ open class LuceneIngestionService(
                         // Create error record but don't update DB yet
                         val updatedRecord = record.copy(
                             consumptionStatus = "ERROR",
-                            fileName = record.fileName ?: record.fullFilePath.substringAfterLast('/'),
+                            fileName = record.fileName,
                             noOfIndexedDocuments = 0L
                         )
                         
@@ -202,8 +204,6 @@ open class LuceneIngestionService(
             // Wait for all coroutines to complete
             jobs.forEach { it.join() }
         }
-
-
         
         // Log the number of successful updates and documents processed for this watcher
         logger.info("Completed processing for watcher: $watcherName - ${successfulUpdates.get()} successful updates out of ${records.size} records, ${totalDocsProcessed.get()} log documents inserted/updated")
@@ -223,7 +223,7 @@ open class LuceneIngestionService(
         
         try {
             // Process file content as a stream
-            val docsProcessed = processFileStream(sshConfig, record.fullFilePath, record, sshConfig, indexWriter)
+            val docsProcessed = processFileStream(sshConfig, record.fullFilePath, record, sshConfig, indexWriter, watcher)
             
             logger.debug("Indexed record: ${record.id}, file: ${record.fullFilePath}, documents processed: $docsProcessed")
             return docsProcessed
@@ -243,7 +243,8 @@ open class LuceneIngestionService(
         filePath: String,
         record: SSHLogWatcherRecord,
         config: SSHConfig,
-        indexWriter: IndexWriter
+        indexWriter: IndexWriter,
+        watcher: SSHLogWatcher
     ): Int {
         try {
             // Get file stream via SSH
@@ -260,7 +261,6 @@ open class LuceneIngestionService(
             
             // Regex to match timestamp at the beginning of a log line
             // Format: YYYY-MM-DD HH:MM:SS.SSS
-            val timestampRegex = Regex("^\\d{4}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2}:\\d{2}\\.\\d{3}.*")
             
             var currentLogEntry = StringBuilder()
             var currentTimestamp = ""
@@ -279,7 +279,8 @@ open class LuceneIngestionService(
                                 config,
                                 filePath,
                                 indexWriter,
-                                currentTimestamp
+                                currentTimestamp,
+                                watcher
                             )
                             documentCount++
                         }
@@ -308,7 +309,8 @@ open class LuceneIngestionService(
                     config,
                     filePath,
                     indexWriter,
-                    currentTimestamp
+                    currentTimestamp,
+                    watcher
                 )
                 documentCount++
             }
@@ -334,7 +336,8 @@ open class LuceneIngestionService(
         sshConfig: SSHConfig,
         filePath: String,
         indexWriter: IndexWriter,
-        timestamp: String
+        timestamp: String,
+        watcher: SSHLogWatcher
     ) {
         // Create content string for hashing (including timestamp and server)
         val contentForHash = "${sshConfig.serverHost}|${sshConfig.name}${record.fileName}$logEntry|$timestamp|"
@@ -346,23 +349,21 @@ open class LuceneIngestionService(
         val doc = Document()
         
         // Parse timestamp to long if it has the expected format
-        val timestampLong = parseTimestampToLong(timestamp)
+        val timestampLong = parseTimestampToLong(timestamp, watcher.javaTimeZoneId)
         
         // Add fields - only index md5Id, logStrTimestamp, logLongTimestamp, logPath, and content
         // Store original values for retrieval but index lowercase versions for case-insensitive search
         doc.add(StringField("md5Id", contentMD5Hash, Field.Store.YES))
         doc.add(StringField("logStrTimestamp", timestamp, Field.Store.YES))
-        // Add the parsed timestamp as a long field
-        doc.add(LongField("logLongTimestamp", timestampLong ?: 0L, Field.Store.YES))
+        doc.add(StringField("javaStrTimeZoneId", watcher.javaTimeZoneId, Field.Store.YES))
+
+        doc.add(LongPoint("logLongTimestamp", timestampLong))                // for range/exact queries
+        doc.add(NumericDocValuesField("logLongTimestamp", timestampLong))   // for sorting
+        doc.add(StoredField("logLongTimestamp", timestampLong))             // optional: for retrieval
+
         // Store original values but index lowercase versions for case-insensitive search
         doc.add(StringField("logPath", filePath, Field.Store.YES))
         doc.add(TextField("content", logEntry, Field.Store.YES))
-
-        doc.add(LongField("ingestionLongTimestamp", System.currentTimeMillis(), Field.Store.NO))
-        doc.add(StringField("sshConfigServer", sshConfig.serverHost, Field.Store.NO))
-        doc.add(StringField("sshConfigName", sshConfig.name, Field.Store.NO))
-        doc.add(StringField("sshWatcherName", record.sshLogWatcherName, Field.Store.NO))
-        doc.add(LongField("sshWatcherRecordId", record.id!!, Field.Store.NO))
 
         // Add the document to the index
         // Use contentMD5Hash as the unique identifier to avoid duplicates
@@ -428,16 +429,27 @@ open class LuceneIngestionService(
     private fun generateMD5Hash(input: String): String {
         val md = MessageDigest.getInstance("MD5")
         val digest = md.digest(input.toByteArray())
-        return digest.joinToString("") { "%02x".format(it) }
+        
+        // Optimized version using StringBuilder and bit operations
+        val hexChars = "0123456789abcdef"
+        val result = StringBuilder(digest.size * 2)
+        for (byte in digest) {
+            val i = byte.toInt() and 0xFF
+            result.append(hexChars[i shr 4])
+            result.append(hexChars[i and 0x0F])
+        }
+        return result.toString()
     }
     
     /**
      * Parse timestamp string to long value
      * Format: YYYY-MM-DD HH:MM:SS.SSS
+     * @param timestamp The timestamp string to parse
+     * @param timezoneId The Java timezone ID to use for parsing (e.g., "UTC", "America/New_York")
      */
-    private fun parseTimestampToLong(timestamp: String): Long? {
-        if (!timestamp.matches(Regex("\\d{4}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2}:\\d{2}\\.\\d{3}"))) {
-            return null
+    private fun parseTimestampToLong(timestamp: String, timezoneId: String = "UTC"): Long {
+        if (!timestamp.matches(timestampRegex)) {
+            throw Exception("Timestamp regex does not match")
         }
         
         try {
@@ -452,14 +464,15 @@ open class LuceneIngestionService(
             val second = parts[5].toInt()
             val millisecond = parts[6].toInt()
             
-            val calendar = java.util.Calendar.getInstance()
+            // Create calendar with the specified timezone
+            val calendar = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone(timezoneId))
             calendar.set(year, month, day, hour, minute, second)
             calendar.set(java.util.Calendar.MILLISECOND, millisecond)
             
             return calendar.timeInMillis
         } catch (e: Exception) {
-            logger.warn("Failed to parse timestamp: $timestamp", e)
-            return null
+            logger.warn("Failed to parse timestamp: $timestamp with timezone: $timezoneId", e)
+            throw e
         }
     }
 }

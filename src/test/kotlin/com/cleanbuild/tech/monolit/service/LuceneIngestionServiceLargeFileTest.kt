@@ -147,6 +147,7 @@ class LuceneIngestionServiceLargeFileTest {
                         filePostfix VARCHAR(255) NOT NULL,
                         archivedLogs BOOLEAN DEFAULT TRUE,
                         enabled BOOLEAN DEFAULT TRUE,
+                        javaTimeZoneId VARCHAR(50) DEFAULT 'UTC',
                         createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
@@ -164,6 +165,8 @@ class LuceneIngestionServiceLargeFileTest {
                         createdTime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updatedTime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         consumptionStatus VARCHAR(50) NOT NULL,
+                        fileName VARCHAR(255) NOT NULL,
+                        noOfIndexedDocuments BIGINT DEFAULT 0,
                         duplicatedFile VARCHAR(255)
                     )
                 """)
@@ -654,5 +657,101 @@ class LuceneIngestionServiceLargeFileTest {
             }
             sshLogWatcherCrud.delete(listOf(watcher))
         }
+    }
+    
+    @Test
+    fun `test parallel ingestion of multiple records in single watcher`() {
+        // Configure the mock to return a new streaming large file content for each call
+        whenever(sshCommandRunner.getFileStream(any(), any())).thenAnswer { generateLargeLogContent() }
+        
+        // Create a single watcher name for parallel processing
+        val watcherName = "single-watcher-multiple-records-${UUID.randomUUID()}"
+        
+        // Create a single SSH log watcher
+        val watcher = SSHLogWatcher(
+            name = watcherName,
+            sshConfigName = testConfigName,
+            watchDir = "/var/log",
+            recurDepth = 1,
+            filePrefix = "",
+            fileContains = "large-test",
+            filePostfix = ".log"
+        )
+        sshLogWatcherCrud.insert(listOf(watcher))
+        
+        // Create 4 SSH log watcher records for the single watcher
+        val records = (1..4).map { index ->
+            SSHLogWatcherRecord(
+                sshLogWatcherName = watcherName,
+                fullFilePath = "/var/log/large-test-$index.log",
+                fileSize = ONE_GB,
+                cTime = Timestamp(System.currentTimeMillis()),
+                fileHash = "single-watcher-hash-$index-${UUID.randomUUID()}",
+                consumptionStatus = "NEW",
+                fileName = "large-test-$index.log",
+                noOfIndexedDocuments = 0
+            )
+        }
+        sshLogWatcherRecordCrud.insert(records)
+        
+        // Record start time
+        val startTime = System.currentTimeMillis()
+        println("[DEBUG_LOG] Starting single watcher multiple records ingestion test at: $startTime")
+        println("[DEBUG_LOG] Processing 4 files of approximately 1GB each in parallel for a single watcher")
+        
+        // Execute the method under test
+        service.ingestRecords()
+        
+        // Record end time
+        val endTime = System.currentTimeMillis()
+        val durationMs = endTime - startTime
+        
+        // Log the performance metrics
+        println("[DEBUG_LOG] Single watcher parallel ingestion completed in: $durationMs ms")
+        println("[DEBUG_LOG] Single watcher parallel ingestion completed in: ${TimeUnit.MILLISECONDS.toSeconds(durationMs)} seconds")
+        
+        val minutes = TimeUnit.MILLISECONDS.toMinutes(durationMs)
+        val seconds = TimeUnit.MILLISECONDS.toSeconds(durationMs) % 60
+        println("[DEBUG_LOG] Single watcher parallel ingestion completed in: $minutes minutes and $seconds seconds")
+        
+        // Calculate total throughput (based on 4GB total size)
+        val totalSize = 4 * ONE_GB
+        val throughputMBPerSecond = totalSize / (1024.0 * 1024.0) / (durationMs / 1000.0)
+        println("[DEBUG_LOG] Total throughput: %.2f MB/second".format(throughputMBPerSecond))
+        
+        // Verify all records were updated to INDEXED
+        val updatedRecords = sshLogWatcherRecordCrud.findByColumnValues(
+            mapOf(SSHLogWatcherRecord::sshLogWatcherName to watcherName)
+        )
+        assertEquals(4, updatedRecords.size, "Expected four records for watcher $watcherName")
+        
+        // Check that all records are marked as INDEXED
+        updatedRecords.forEach { record ->
+            assertEquals("INDEXED", record.consumptionStatus, "Record status should be INDEXED for file ${record.fileName}")
+        }
+        
+        // Verify the watcher's index contains documents
+        val watcherIndexDir = indexDir.resolve(watcherName)
+        assertTrue(Files.exists(watcherIndexDir), "Watcher index directory was not created for $watcherName")
+        
+        val directory = FSDirectory.open(watcherIndexDir)
+        val reader = DirectoryReader.open(directory)
+        val searcher = IndexSearcher(reader)
+        
+        // Check that we have documents in the index
+        val allDocsQuery = TermQuery(Term("sshWatcherName", watcherName))
+        val hits = searcher.search(allDocsQuery, Integer.MAX_VALUE)
+        assertTrue(hits.totalHits.value > 0, "Expected documents in the index for watcher $watcherName")
+        
+        // Log the number of indexed documents
+        println("[DEBUG_LOG] Number of indexed documents for single watcher with multiple records: ${hits.totalHits.value}")
+        
+        // Clean up
+        reader.close()
+        directory.close()
+        
+        // Clean up the watcher and its records
+        sshLogWatcherRecordCrud.delete(updatedRecords)
+        sshLogWatcherCrud.delete(listOf(watcher))
     }
 }

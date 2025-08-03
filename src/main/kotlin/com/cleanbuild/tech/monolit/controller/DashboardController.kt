@@ -142,6 +142,7 @@ class DashboardController(private val dataSource: DataSource) {
                     <a href="/dashboard" style="margin-right: 15px; color: #3498db; text-decoration: none;">SSH Configs</a>
                     <a href="/ssh-log-watcher" style="margin-right: 15px; color: #3498db; text-decoration: none;">SSH Log Watchers</a>
                     <a href="/sshlogwatcher-records" style="margin-right: 15px; color: #3498db; text-decoration: none;">SSH Log Watcher Records</a>
+                    <a href="/log-search" style="margin-right: 15px; color: #3498db; text-decoration: none;">Log Search</a>
                 </div>
                 
                 <h1>SSH Configs Dashboard</h1>

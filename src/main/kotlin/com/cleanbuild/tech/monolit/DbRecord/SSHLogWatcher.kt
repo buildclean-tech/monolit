@@ -16,12 +16,13 @@ data class SSHLogWatcher(
     val filePostfix: String,
     val archivedLogs: Boolean = true,
     val enabled: Boolean = true,
+    val javaTimeZoneId: String = "UTC",
     val createdAt: Timestamp = Timestamp(System.currentTimeMillis()),
     val updatedAt: Timestamp = Timestamp(System.currentTimeMillis())
 ) {
     override fun toString(): String {
         return "SSHLogWatcher(name='$name', sshConfigName='$sshConfigName', watchDir='$watchDir', recurDepth=$recurDepth, " +
                "filePrefix='$filePrefix', fileContains='$fileContains', filePostfix='$filePostfix', " +
-               "archivedLogs='$archivedLogs', enabled=$enabled, createdAt=$createdAt, updatedAt=$updatedAt)"
+               "archivedLogs='$archivedLogs', enabled=$enabled, javaTimeZoneId='$javaTimeZoneId', createdAt=$createdAt, updatedAt=$updatedAt)"
     }
 }

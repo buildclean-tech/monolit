@@ -227,6 +227,7 @@ class SSHLogWatcherServiceTest {
             filePostfix = ".txt",
             archivedLogs = true,
             enabled = true,
+            javaTimeZoneId = "UTC",
             createdAt = Timestamp(System.currentTimeMillis()),
             updatedAt = Timestamp(System.currentTimeMillis())
         )

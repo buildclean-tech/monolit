@@ -138,6 +138,7 @@ class SSHLogWatcherRecordController(private val dataSource: DataSource) {
                     <a href="/dashboard">SSH Configs</a>
                     <a href="/ssh-log-watcher">SSH Log Watchers</a>
                     <a href="/sshlogwatcher-records">SSH Log Watcher Records</a>
+                    <a href="/log-search">Log Search</a>
                 </div>
                 
                 <h1>SSH Log Watcher Records</h1>

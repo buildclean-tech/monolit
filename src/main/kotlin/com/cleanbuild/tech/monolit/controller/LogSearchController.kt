@@ -5,6 +5,7 @@ import com.cleanbuild.tech.monolit.repository.CRUDOperation
 import com.cleanbuild.tech.monolit.service.LuceneIngestionService
 import org.apache.lucene.analysis.standard.StandardAnalyzer
 import org.apache.lucene.document.Document
+import org.apache.lucene.document.LongPoint
 import org.apache.lucene.index.DirectoryReader
 import org.apache.lucene.index.Term
 import org.apache.lucene.search.BooleanClause
@@ -13,6 +14,7 @@ import org.apache.lucene.search.IndexSearcher
 import org.apache.lucene.search.TermQuery
 import org.apache.lucene.search.WildcardQuery
 import org.apache.lucene.store.FSDirectory
+import java.time.ZoneId
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -419,9 +421,29 @@ class LogSearchController(
                 
                 // Add date range if provided
                 if (!startDate.isNullOrBlank() || !endDate.isNullOrBlank()) {
-                    // TODO: Implement date range filtering
-                    // This would require parsing the dates and converting to timestamp longs
-                    // Then using a NumericRangeQuery on the logLongTimestamp field
+                    // Parse dates and convert to timestamp longs for range query
+                    // Default timezone to UTC if not available
+                    val timeZone = ZoneId.of("UTC")
+                    
+                    // Set default start and end values for the range
+                    var startTimestamp = Long.MIN_VALUE
+                    var endTimestamp = Long.MAX_VALUE
+                    
+                    // Parse start date if provided
+                    if (!startDate.isNullOrBlank()) {
+                        val startDateTime = LocalDateTime.parse(startDate + "T00:00:00", DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                        startTimestamp = startDateTime.atZone(timeZone).toInstant().toEpochMilli()
+                    }
+                    
+                    // Parse end date if provided
+                    if (!endDate.isNullOrBlank()) {
+                        val endDateTime = LocalDateTime.parse(endDate + "T23:59:59", DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                        endTimestamp = endDateTime.atZone(timeZone).toInstant().toEpochMilli()
+                    }
+                    
+                    // Create range query for logLongTimestamp field
+                    val rangeQuery = LongPoint.newRangeQuery("logLongTimestamp", startTimestamp, endTimestamp)
+                    queryBuilder.add(rangeQuery, BooleanClause.Occur.MUST)
                 }
                 
                 // If no search criteria were added, return empty results

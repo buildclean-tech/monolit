@@ -94,7 +94,8 @@ class LogSearchController(
         @RequestParam(required = false) startDate: String?,
         @RequestParam(required = false) endDate: String?,
         @RequestParam(required = false, defaultValue = "1") page: Int,
-        @RequestParam(required = false, defaultValue = "20") pageSize: Int
+        @RequestParam(required = false, defaultValue = "20") pageSize: Int,
+        @RequestParam(required = false, defaultValue = "UTC") timezone: String
     ): String {
         val watcherNames = getAllSSHLogWatcherNames()
         
@@ -107,7 +108,7 @@ class LogSearchController(
         
         // Search results
         val searchResults = if ((!contentQuery.isNullOrBlank() || !timestampQuery.isNullOrBlank() || !logPathQuery.isNullOrBlank()) && !watcherName.isNullOrBlank()) {
-            searchLogs(watcherName, filePath, contentQuery, timestampQuery, logPathQuery, operator ?: "AND", startDate, endDate, page, pageSize)
+            searchLogs(watcherName, filePath, contentQuery, timestampQuery, logPathQuery, operator ?: "AND", startDate, endDate, page, pageSize, timezone)
         } else {
             emptyList()
         }
@@ -291,6 +292,10 @@ class LogSearchController(
                                 <input type="datetime-local" id="endDate" name="endDate" value="${endDate ?: ""}">
                             </div>
                         </div>
+                        <div class="form-group">
+                            <label for="timezone">Timezone:</label>
+                            <input type="text" id="timezone" name="timezone" value="${timezone}" placeholder="e.g., UTC, America/New_York">
+                        </div>
                         <button type="submit">Search</button>
                     </form>
                 </div>
@@ -329,10 +334,10 @@ class LogSearchController(
                         """
                         <div class="pagination">
                             ${if (page > 1) {
-                                """<a href="/log-search?watcherName=${watcherName}&filePath=${filePath ?: ""}&contentQuery=${contentQuery ?: ""}&timestampQuery=${timestampQuery ?: ""}&logPathQuery=${logPathQuery ?: ""}&operator=${operator ?: "AND"}&startDate=${startDate ?: ""}&endDate=${endDate ?: ""}&page=${page - 1}&pageSize=${pageSize}">Previous</a>"""
+                                """<a href="/log-search?watcherName=${watcherName}&filePath=${filePath ?: ""}&contentQuery=${contentQuery ?: ""}&timestampQuery=${timestampQuery ?: ""}&logPathQuery=${logPathQuery ?: ""}&operator=${operator ?: "AND"}&startDate=${startDate ?: ""}&endDate=${endDate ?: ""}&page=${page - 1}&pageSize=${pageSize}&timezone=${timezone}">Previous</a>"""
                             } else ""}
                             <a href="#" class="active">${page}</a>
-                            <a href="/log-search?watcherName=${watcherName}&filePath=${filePath ?: ""}&contentQuery=${contentQuery ?: ""}&timestampQuery=${timestampQuery ?: ""}&logPathQuery=${logPathQuery ?: ""}&operator=${operator ?: "AND"}&startDate=${startDate ?: ""}&endDate=${endDate ?: ""}&page=${page + 1}&pageSize=${pageSize}">Next</a>
+                            <a href="/log-search?watcherName=${watcherName}&filePath=${filePath ?: ""}&contentQuery=${contentQuery ?: ""}&timestampQuery=${timestampQuery ?: ""}&logPathQuery=${logPathQuery ?: ""}&operator=${operator ?: "AND"}&startDate=${startDate ?: ""}&endDate=${endDate ?: ""}&page=${page + 1}&pageSize=${pageSize}&timezone=${timezone}">Next</a>
                         </div>
                         """
                     } else ""}
@@ -359,7 +364,8 @@ class LogSearchController(
         startDate: String?,
         endDate: String?,
         page: Int,
-        pageSize: Int
+        pageSize: Int,
+        timezone: String
     ): List<SearchResult> {
         val results = mutableListOf<SearchResult>()
         
@@ -422,8 +428,8 @@ class LogSearchController(
                 // Add date range if provided
                 if (!startDate.isNullOrBlank() || !endDate.isNullOrBlank()) {
                     // Parse dates and convert to timestamp longs for range query
-                    // Default timezone to UTC if not available
-                    val timeZone = ZoneId.of("UTC")
+                    // Use the provided timezone parameter
+                    val timeZone = ZoneId.of(timezone)
                     
                     // Set default start and end values for the range
                     var startTimestamp = Long.MIN_VALUE

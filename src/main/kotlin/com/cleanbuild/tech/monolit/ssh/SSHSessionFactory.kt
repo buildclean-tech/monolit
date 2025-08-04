@@ -8,21 +8,17 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.io.IOException
 import java.util.EnumSet
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
- * Factory for creating and managing SSH client sessions.
+ * Factory for creating SSH client sessions.
  * 
- * This factory creates SSH sessions based on SSHConfig, checks their health,
- * and caches them to avoid creating multiple sessions for the same configuration.
+ * This factory creates new SSH sessions based on SSHConfig and checks their health.
+ * Each call to getSession() returns a new session.
  */
 @Component
 open class SSHSessionFactory {
     private val logger = LoggerFactory.getLogger(SSHSessionFactory::class.java)
-    
-    // Cache of SSH sessions, keyed by SSH config name
-    private val sessionCache = ConcurrentHashMap<String, ClientSession>()
     
     // Global SSH client instance
     private val sshClient: SshClient by lazy {
@@ -42,10 +38,9 @@ open class SSHSessionFactory {
     }
     
     /**
-     * Gets an SSH session for the given SSH configuration.
+     * Gets a new SSH session for the given SSH configuration.
      * 
-     * If a healthy session already exists in the cache, it will be returned.
-     * Otherwise, a new session will be created, checked for health, cached, and returned.
+     * A new session will be created, checked for health, and returned.
      * 
      * @param sshConfig The SSH configuration to use for creating the session
      * @return A healthy SSH client session
@@ -53,21 +48,6 @@ open class SSHSessionFactory {
      */
     @Throws(IOException::class)
     fun getSession(sshConfig: SSHConfig): ClientSession {
-        // Check if we have a cached session
-        val cachedSession = sessionCache[sshConfig.name]
-        
-        // If we have a cached session and it's healthy, return it
-        if (cachedSession != null && isSessionHealthy(cachedSession)) {
-            logger.debug("Using cached SSH session for config: {}", sshConfig.name)
-            return cachedSession
-        }
-        
-        // If we had a cached session but it's not healthy, remove it
-        if (cachedSession != null) {
-            logger.info("Removing unhealthy cached SSH session for config: {}", sshConfig.name)
-            removeSession(sshConfig.name)
-        }
-        
         // Create a new session
         logger.info("Creating new SSH session for config: {}", sshConfig.name)
         val session = createSession(sshConfig)
@@ -82,9 +62,6 @@ open class SSHSessionFactory {
             }
             throw IOException("Failed to create a healthy SSH session for config: ${sshConfig.name}")
         }
-        
-        // Cache the session
-        sessionCache[sshConfig.name] = session
         
         return session
     }
@@ -169,28 +146,9 @@ open class SSHSessionFactory {
     }
     
     /**
-     * Removes a session from the cache and closes it.
-     * 
-     * @param configName The name of the SSH configuration whose session should be removed
-     */
-    fun removeSession(configName: String) {
-        val session = sessionCache.remove(configName)
-        if (session != null) {
-            try {
-                session.close()
-            } catch (e: IOException) {
-                logger.warn("Error closing SSH session: {}", e.message)
-            }
-        }
-    }
-    
-    /**
-     * Closes all cached sessions and stops the SSH client.
+     * Closes the SSH client.
      */
     fun close() {
-        // Close all cached sessions
-        sessionCache.keys.forEach { removeSession(it) }
-        
         // Stop the SSH client
         try {
             sshClient.stop()

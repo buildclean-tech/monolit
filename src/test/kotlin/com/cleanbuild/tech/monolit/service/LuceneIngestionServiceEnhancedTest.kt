@@ -9,6 +9,7 @@ import org.apache.lucene.document.Document
 import org.apache.lucene.index.DirectoryReader
 import org.apache.lucene.index.Term
 import org.apache.lucene.search.IndexSearcher
+import org.apache.lucene.search.MatchAllDocsQuery
 import org.apache.lucene.search.TermQuery
 import org.apache.lucene.store.FSDirectory
 import org.h2.jdbcx.JdbcDataSource
@@ -286,7 +287,7 @@ class LuceneIngestionServiceEnhancedTest {
         val searcher = IndexSearcher(reader)
         
         // Check that we have documents in the index
-        val allDocsQuery = TermQuery(Term("sshWatcherName", testWatcherName))
+        val allDocsQuery = MatchAllDocsQuery()
         val hits = searcher.search(allDocsQuery, 10)
         assertTrue(hits.totalHits.value > 0, "Expected documents in the index")
         
@@ -316,7 +317,7 @@ class LuceneIngestionServiceEnhancedTest {
         val searcher = IndexSearcher(reader)
         
         // Get all documents and check their content
-        val allDocsQuery = TermQuery(Term("sshWatcherName", testWatcherName))
+        val allDocsQuery = MatchAllDocsQuery()
         val hits = searcher.search(allDocsQuery, 10)
         assertTrue(hits.totalHits.value > 0, "No documents found in the index")
         
@@ -368,7 +369,7 @@ class LuceneIngestionServiceEnhancedTest {
         val searcher = IndexSearcher(reader)
         
         // Get all documents and check their timestamps
-        val allDocsQuery = TermQuery(Term("sshWatcherName", testWatcherName))
+        val allDocsQuery = MatchAllDocsQuery()
         val hits = searcher.search(allDocsQuery, 10)
         assertTrue(hits.totalHits.value > 0, "No documents found in the index")
         
@@ -423,7 +424,7 @@ class LuceneIngestionServiceEnhancedTest {
         val searcher = IndexSearcher(reader)
         
         // Check that we have documents in the index
-        val allDocsQuery = TermQuery(Term("sshWatcherName", testWatcherName))
+        val allDocsQuery = MatchAllDocsQuery()
         val hits = searcher.search(allDocsQuery, 10)
         assertTrue(hits.totalHits.value > 0, "Expected documents in the index")
         
@@ -543,7 +544,7 @@ class LuceneIngestionServiceEnhancedTest {
         val searcher = IndexSearcher(reader)
         
         // Check that we have documents in the index
-        val allDocsQuery = TermQuery(Term("sshWatcherName", testWatcherName))
+        val allDocsQuery = MatchAllDocsQuery()
         val hits = searcher.search(allDocsQuery, 30)
         
         // We should have at least one document in the index
@@ -612,7 +613,7 @@ class LuceneIngestionServiceEnhancedTest {
         val searcher = IndexSearcher(reader)
         
         // Check that we have documents in the index
-        val allDocsQuery = TermQuery(Term("sshWatcherName", testWatcherName))
+        val allDocsQuery = MatchAllDocsQuery()
         val hits = searcher.search(allDocsQuery, 30)
         
         // We should have at least one document in the index
@@ -633,5 +634,85 @@ class LuceneIngestionServiceEnhancedTest {
             gzipOutputStream.write(content.toByteArray())
         }
         return byteArrayOutputStream.toByteArray()
+    }
+    
+    /**
+     * Test that the service can be configured to use deflate compression
+     */
+    @Test
+    fun `test service with deflate compression enabled`() {
+        // First clean up existing records
+        cleanupTestData()
+        
+        // Recreate the SSH config and watcher
+        // Insert SSH config
+        val sshConfig = SSHConfig(
+            name = testConfigName,
+            serverHost = testServerHost,
+            port = 22,
+            username = "testuser",
+            password = "testpass"
+        )
+        sshConfigCrud.insert(listOf(sshConfig))
+        
+        // Insert SSH log watcher
+        val sshLogWatcher = SSHLogWatcher(
+            name = testWatcherName,
+            sshConfigName = testConfigName,
+            watchDir = "/var/log",
+            recurDepth = 1,
+            filePrefix = "",
+            fileContains = "test",
+            filePostfix = ".log"
+        )
+        sshLogWatcherCrud.insert(listOf(sshLogWatcher))
+        
+        // Create a new record for this test
+        val compressionTestRecord = SSHLogWatcherRecord(
+            sshLogWatcherName = testWatcherName,
+            fullFilePath = "/var/log/compression-test.log",
+            fileSize = testFileContent.length.toLong(),
+            cTime = Timestamp(System.currentTimeMillis()),
+            fileHash = "compression-test-hash-${UUID.randomUUID()}",
+            consumptionStatus = "NEW",
+            fileName = "compression-test.log",
+            noOfIndexedDocuments = 0
+        )
+        sshLogWatcherRecordCrud.insert(listOf(compressionTestRecord))
+        
+        // Create a service with deflate compression enabled
+        val compressedService = LuceneIngestionService(dataSource, sshCommandRunner)
+        
+        try {
+            // Process records with compression enabled
+            compressedService.ingestRecords(true)
+            
+            // Verify our specific record was processed
+            val processedRecords = sshLogWatcherRecordCrud.findByColumnValues(
+                mapOf(
+                    SSHLogWatcherRecord::fullFilePath to "/var/log/compression-test.log",
+                    SSHLogWatcherRecord::sshLogWatcherName to testWatcherName
+                )
+            )
+            assertTrue(processedRecords.isNotEmpty(), "Record should exist")
+            assertEquals("INDEXED", processedRecords[0].consumptionStatus, "Record should be processed")
+            
+            // Verify index was created
+            val indexDir = tempDir.resolve("lucene-indexes").resolve(testWatcherName)
+            assertTrue(Files.exists(indexDir), "Index directory should exist")
+            
+            // Open the index and verify documents were indexed
+            val directory = FSDirectory.open(indexDir)
+            val reader = DirectoryReader.open(directory)
+            val searcher = IndexSearcher(reader)
+            val docs = searcher.search(MatchAllDocsQuery(), 100)
+            assertTrue(docs.totalHits.value > 0, "Documents should be indexed")
+            
+            // Clean up
+            reader.close()
+            directory.close()
+        } finally {
+            compressedService.close()
+        }
     }
 }

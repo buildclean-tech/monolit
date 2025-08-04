@@ -127,7 +127,7 @@ class SSHCommandRunner(private val sshSessionFactory: SSHSessionFactory) {
             val channel = session.createExecChannel(command)
             
             // Open the channel
-            val openFuture = channel.open()
+            val openFuture = channel.open().verify()
             if (!openFuture.await(COMMAND_TIMEOUT, TimeUnit.SECONDS)) {
                 throw IOException("Timeout while opening channel for file: $filepath")
             }
@@ -138,9 +138,10 @@ class SSHCommandRunner(private val sshSessionFactory: SSHSessionFactory) {
             
             // Return the input stream
             // Note: The caller is responsible for closing this stream
-            return FileStreamWrapper(channel)
+            return FileStreamWrapper(channel, session)
         } catch (e: Exception) {
             logger.error("Error getting file stream for $filepath", e)
+            session.close()
             throw IOException("Failed to get file stream: ${e.message}", e)
         }
     }
@@ -214,12 +215,15 @@ class SSHCommandRunner(private val sshSessionFactory: SSHSessionFactory) {
             logger.error("Error executing command: $command", e)
             throw IOException("Failed to execute command: ${e.message}", e)
         }
+        finally {
+            session.close()
+        }
     }
 
     /**
-     * A wrapper for the input stream from an SSH channel that closes the channel when the stream is closed.
+     * A wrapper for the input stream from an SSH channel that closes the channel and session when the stream is closed.
      */
-    private class FileStreamWrapper(private val channel: ClientChannel) : InputStream() {
+    private class FileStreamWrapper(private val channel: ClientChannel, private val session: ClientSession) : InputStream() {
         private val inputStream = channel.getInvertedOut()
 
         override fun read(): Int = inputStream.read()
@@ -232,7 +236,11 @@ class SSHCommandRunner(private val sshSessionFactory: SSHSessionFactory) {
             try {
                 inputStream.close()
             } finally {
-                channel.close(false)
+                try {
+                    channel.close(false)
+                } finally {
+                    session.close()
+                }
             }
         }
     }

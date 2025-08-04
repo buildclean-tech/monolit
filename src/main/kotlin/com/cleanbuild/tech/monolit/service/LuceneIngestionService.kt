@@ -26,6 +26,9 @@ import javax.sql.DataSource
 import kotlin.math.max
 import kotlinx.coroutines.*
 import org.apache.lucene.analysis.CharArraySet
+import org.apache.lucene.codecs.Codec
+import org.apache.lucene.codecs.StoredFieldsFormat
+import org.apache.lucene.codecs.lucene95.Lucene95Codec
 import kotlin.math.min
 
 @Service
@@ -68,7 +71,7 @@ open class LuceneIngestionService(
      * Each watcher's records are processed in parallel using coroutines
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun ingestRecords() {
+    fun ingestRecords(useDeflateCompression: Boolean = false) {
         logger.info("Starting ingestion of SSHLogWatcherRecords")
         
         try {
@@ -101,7 +104,7 @@ open class LuceneIngestionService(
                     recordsByWatcher.forEach { (watcherName, records) ->
                         val job = launch(dispatcher) {
                             try {
-                                processRecordsForWatcher(watcherName, records)
+                                processRecordsForWatcher(watcherName, records, useDeflateCompression)
                             } catch (e: Exception) {
                                 logger.error("Error processing records for watcher $watcherName: ${e.message}", e)
                             }
@@ -133,7 +136,7 @@ open class LuceneIngestionService(
      * Process records for a specific watcher using coroutines for parallelization
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private suspend fun processRecordsForWatcher(watcherName: String, records: List<SSHLogWatcherRecord>) {
+    private suspend fun processRecordsForWatcher(watcherName: String, records: List<SSHLogWatcherRecord>, useDeflateCompression: Boolean = false) {
         logger.info("Processing ${records.size} records for watcher: $watcherName")
         
         // Get the watcher configuration
@@ -151,7 +154,7 @@ open class LuceneIngestionService(
         }
         
         // Get or create index writer for this watcher
-        val indexWriter = getIndexWriter(watcher.name)
+        val indexWriter = getIndexWriter(watcher.name, useDeflateCompression)
         
         // Counter for successful updates (using atomic to handle concurrent updates)
         val successfulUpdates = AtomicInteger(0)
@@ -168,7 +171,7 @@ open class LuceneIngestionService(
             val jobs = records.map { record ->
                 launch(dispatcher) {
                     try {
-                        val docsProcessed = processRecord(record, watcher, sshConfig, indexWriter)
+                        val docsProcessed = processRecord(record, watcher, sshConfig, indexWriter, useDeflateCompression)
                         
                         // Create updated record but don't update DB yet
                         val updatedRecord = record.copy(
@@ -217,13 +220,14 @@ open class LuceneIngestionService(
         record: SSHLogWatcherRecord,
         watcher: SSHLogWatcher,
         sshConfig: SSHConfig,
-        indexWriter: IndexWriter
+        indexWriter: IndexWriter,
+        useDeflateCompression: Boolean = false
     ): Int {
         logger.debug("Processing record: ${record.id}, file: ${record.fullFilePath}")
         
         try {
             // Process file content as a stream
-            val docsProcessed = processFileStream(sshConfig, record.fullFilePath, record, sshConfig, indexWriter, watcher)
+            val docsProcessed = processFileStream(sshConfig, record.fullFilePath, record, sshConfig, indexWriter, watcher, useDeflateCompression)
             
             logger.debug("Indexed record: ${record.id}, file: ${record.fullFilePath}, documents processed: $docsProcessed")
             return docsProcessed
@@ -244,7 +248,8 @@ open class LuceneIngestionService(
         record: SSHLogWatcherRecord,
         config: SSHConfig,
         indexWriter: IndexWriter,
-        watcher: SSHLogWatcher
+        watcher: SSHLogWatcher,
+        useDeflateCompression: Boolean = false
     ): Int {
         try {
             // Get file stream via SSH
@@ -373,7 +378,7 @@ open class LuceneIngestionService(
     /**
      * Get or create an IndexWriter for a watcher
      */
-    private fun getIndexWriter(watcherName: String): IndexWriter {
+    private fun getIndexWriter(watcherName: String, useDeflateCompression: Boolean = false): IndexWriter {
         return indexWriters.computeIfAbsent(watcherName) {
             // Create directory for this watcher
             val indexDir = baseIndexDir.resolve(watcherName)
@@ -392,6 +397,16 @@ open class LuceneIngestionService(
             val config = IndexWriterConfig(analyzer)
             config.ramBufferSizeMB = 512.0
             config.openMode = IndexWriterConfig.OpenMode.CREATE_OR_APPEND
+            
+            // Apply compression settings based on configuration
+            if (useDeflateCompression) {
+                // Use Lucene's built-in best compression codec
+                config.codec =  Lucene95Codec(Lucene95Codec.Mode.BEST_COMPRESSION)
+                logger.info("Using enhanced compression settings for watcher $watcherName")
+            } else {
+                // Use default compression
+                logger.info("Using default compression for watcher $watcherName")
+            }
             
             // Create writer
             val writer = IndexWriter(directory, config)
@@ -454,7 +469,7 @@ open class LuceneIngestionService(
         
         try {
             // Parse timestamp in format "YYYY-MM-DD HH:MM:SS.SSS"
-            val parts = timestamp.split("\t", " ", ".", ":", "-")
+            val parts = timestamp.split("\t", " ", ".", ":", "-", "/")
             
             val year = parts[0].toInt()
             val month = parts[1].toInt() - 1 // Month is 0-based in java.util.Calendar

@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -75,75 +76,26 @@ class SSHSessionFactoryTest {
     }
     
     @Test
-    fun `getSession should create and cache a new session when none exists`() {
+    fun `getSession should create a new session each time`() {
         // Act
-        val session = sshSessionFactory.getSession(testConfig)
-        
-        // Assert
-        assertNotNull(session)
-        assertTrue(session.isOpen)
-        assertTrue(session.isAuthenticated)
-        
-        // Verify the session is cached by getting it again
-        val cachedSession = sshSessionFactory.getSession(testConfig)
-        
-        // Verify the session is the same instance (cached)
-        assertEquals(session, cachedSession)
-    }
-    
-    @Test
-    fun `getSession should return cached session when it exists and is healthy`() {
-        // Arrange - Create a session first
         val session1 = sshSessionFactory.getSession(testConfig)
         
-        // Act - Get the session again
+        // Assert
+        assertNotNull(session1)
+        assertTrue(session1.isOpen)
+        assertTrue(session1.isAuthenticated)
+        
+        // Get another session
         val session2 = sshSessionFactory.getSession(testConfig)
         
-        // Assert - Verify the sessions are the same instance
-        assertEquals(session1, session2)
+        // Verify the sessions are different instances (not cached)
+        assertNotEquals(session1, session2)
         assertTrue(session2.isOpen)
         assertTrue(session2.isAuthenticated)
-    }
-    
-    @Test
-    fun `removeSession should remove and close the session`() {
-        // Arrange - Create a session first
-        val session = sshSessionFactory.getSession(testConfig)
-        assertTrue(session.isOpen)
         
-        // Act - Remove the session
-        sshSessionFactory.removeSession(testConfig.name)
-        
-        // Assert - Verify the session is closed
-        assertFalse(session.isOpen)
-        
-        // Verify getting the session again creates a new one
-        val newSession = sshSessionFactory.getSession(testConfig)
-        assertNotNull(newSession)
-        assertTrue(newSession.isOpen)
-        assertTrue(newSession.isAuthenticated)
-    }
-    
-    @Test
-    fun `close should close all sessions and stop the client`() {
-        // Arrange - Create a session first
-        val session = sshSessionFactory.getSession(testConfig)
-        assertTrue(session.isOpen)
-        
-        // Create another config and session
-        val testConfig2 = testConfig.copy(name = "test-config-2")
-        val session2 = sshSessionFactory.getSession(testConfig2)
-        assertTrue(session2.isOpen)
-        
-        // Act - Close the factory
-        sshSessionFactory.close()
-        
-        // Assert - Verify the sessions are closed
-        assertFalse(session.isOpen)
-        assertFalse(session2.isOpen)
-        
-        // Create a new factory for other tests
-        sshSessionFactory = SSHSessionFactory()
+        // Clean up
+        session1.close()
+        session2.close()
     }
     
     @Test
@@ -167,6 +119,9 @@ class SSHSessionFactoryTest {
         
         // Assert
         assertEquals("test command\n", output)
+        
+        // Clean up
+        session.close()
     }
     
     @Test
@@ -184,5 +139,22 @@ class SSHSessionFactoryTest {
         
         // Verify the exception message
         assertTrue(exception.message?.contains("Authentication failed") == true)
+    }
+    
+    @Test
+    fun `close should stop the client`() {
+        // Arrange - Create a session first
+        val session = sshSessionFactory.getSession(testConfig)
+        assertTrue(session.isOpen)
+        
+        // Create another session
+        val session2 = sshSessionFactory.getSession(testConfig)
+        assertTrue(session2.isOpen)
+        
+        // Act - Close the factory
+        sshSessionFactory.close()
+        
+        // Create a new factory for other tests
+        sshSessionFactory = SSHSessionFactory()
     }
 }

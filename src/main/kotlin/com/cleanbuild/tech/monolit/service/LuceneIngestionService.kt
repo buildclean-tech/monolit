@@ -391,7 +391,7 @@ open class LuceneIngestionService(
             val directory = FSDirectory.open(indexDir)
             
             // Create analyzer
-            val analyzer = StandardAnalyzer(CharArraySet.EMPTY_SET)
+            val analyzer = getAnalyzer()
             
             // Create config
             val config = IndexWriterConfig(analyzer)
@@ -436,6 +436,14 @@ open class LuceneIngestionService(
      */
     fun close() {
         closeAllIndexWriters()
+    }
+    
+    /**
+     * Get the analyzer used by this service for query parsing
+     * @return StandardAnalyzer with empty stop words set
+     */
+    fun getAnalyzer(): StandardAnalyzer {
+        return StandardAnalyzer(CharArraySet.EMPTY_SET)
     }
     
     /**

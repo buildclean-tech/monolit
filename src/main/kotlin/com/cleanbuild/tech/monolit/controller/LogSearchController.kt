@@ -12,6 +12,8 @@ import org.apache.lucene.search.*
 import org.apache.lucene.store.FSDirectory
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.*
+import java.io.BufferedWriter
+import java.io.OutputStreamWriter
 import java.nio.file.Files
 import java.time.ZoneId
 import java.time.LocalDateTime
@@ -64,13 +66,31 @@ class LogSearchController(
         @RequestParam(required = false) operator: String?,
         @RequestParam(required = false) startDate: String?,
         @RequestParam(required = false) endDate: String?,
-        @RequestParam(required = false, defaultValue = "UTC") timezone: String
-    ): String {
+        @RequestParam(required = false, defaultValue = "UTC") timezone: String,
+        response: HttpServletResponse
+    ) {
+        response.contentType = MediaType.TEXT_HTML_VALUE
+        response.characterEncoding = "UTF-8"
 
-        val watcherNames = getAllSSHLogWatcherNames()
-        val (totalHitCount, resultSeq) = if (watcherName!=null) searchLogs(watcherName, contentQuery, timestampQuery, logPathQuery, operator ?: "AND", startDate, endDate, timezone) else 0 to emptySequence()
+        BufferedWriter(OutputStreamWriter(response.outputStream, Charsets.UTF_8)).use { writer ->
 
-        return """
+            val watcherNames = getAllSSHLogWatcherNames()
+            val (totalHitCount, resultSeq) = if (watcherName != null) {
+                searchLogs(
+                    watcherName,
+                    contentQuery,
+                    timestampQuery,
+                    logPathQuery,
+                    operator ?: "AND",
+                    startDate,
+                    endDate,
+                    timezone
+                )
+            } else 0 to emptySequence()
+
+            // Write header
+            writer.write(
+                """
         <!DOCTYPE html>
         <html lang="en">
         <head>
@@ -115,7 +135,13 @@ class LogSearchController(
                             <label for="watcherName">SSH Log Watcher:</label>
                             <select id="watcherName" name="watcherName" required onchange="this.form.submit()">
                                 <option value="">Select a watcher</option>
-                                ${watcherNames.joinToString("") { "<option value=\"$it\" ${if (it == watcherName) "selected" else ""}>${it}</option>" }}
+    """.trimIndent()
+            )
+            watcherNames.forEach {
+                writer.write("<option value=\"$it\" ${if (it == watcherName) "selected" else ""}>$it</option>")
+            }
+            writer.write(
+                """
                             </select>
                         </div>
                         <div class="form-group"><label for="contentQuery">Content Search:</label>
@@ -152,21 +178,42 @@ class LogSearchController(
                         <a href="/log-search/download?watcherName=${watcherName ?: ""}&contentQuery=${contentQuery ?: ""}&timestampQuery=${timestampQuery ?: ""}&logPathQuery=${logPathQuery ?: ""}&operator=${operator ?: "AND"}&startDate=${startDate ?: ""}&endDate=${endDate ?: ""}&timezone=${timezone}">Download Results</a>
                     </div>
                     <h2>Search Results ${if (totalHitCount > 0) "(Total: $totalHitCount hits)" else ""}</h2>
-                    ${if ((contentQuery.isNullOrBlank() && timestampQuery.isNullOrBlank() && logPathQuery.isNullOrBlank()) || watcherName.isNullOrBlank()) {
-            """<div class="no-results"><p>Please select a watcher and enter at least one search term.</p></div>"""
-        } else if (totalHitCount == 0) {
-            """<div class="no-results"><p>No results found.</p></div>"""
-        } else {
-            resultSeq.joinToString("\n") { result ->
-                """<div class="log-entry"><div class="log-entry-header"><strong>${result.timestamp}</strong> | ${result.logPath}</div><div class="log-entry-content">${result.content}</div></div>"""
+    """.trimIndent()
+            )
+
+            writer.flush()
+
+            if ((contentQuery.isNullOrBlank() && timestampQuery.isNullOrBlank() && logPathQuery.isNullOrBlank()) || watcherName.isNullOrBlank()) {
+                writer.write("""<div class="no-results"><p>Please select a watcher and enter at least one search term.</p></div>""")
+            } else if (totalHitCount == 0) {
+                writer.write("""<div class="no-results"><p>No results found.</p></div>""")
+            } else {
+                resultSeq.forEach { result ->
+                    writer.write(
+                        """
+                <div class="log-entry">
+                    <div class="log-entry-header"><strong>${result.timestamp}</strong> | ${result.logPath}</div>
+                    <div class="log-entry-content">${result.content}</div>
+                </div>
+            """.trimIndent()
+                    )
+                    writer.flush() // flush after each entry so browser renders progressively
+                }
             }
-        }}
+
+            writer.write(
+                """
                 </div>
             </div>
         </body>
         </html>
-        """.trimIndent()
+    """.trimIndent()
+            )
+
+            writer.flush()
+        }
     }
+
 
     @GetMapping("/download", produces = [MediaType.TEXT_PLAIN_VALUE])
     fun downloadLogs(

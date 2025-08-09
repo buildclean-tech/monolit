@@ -17,6 +17,7 @@ import java.time.ZoneId
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import javax.sql.DataSource
+import kotlin.math.pow
 
 @RestController
 @RequestMapping("/log-search")
@@ -258,21 +259,29 @@ class LogSearchController(
                         return@use DirectoryReader.open(directory).use { reader ->
 
                             val searcher = IndexSearcher(reader)
-                            val topDocs = searcher.search(
-                                builtQuery, Integer.MAX_VALUE,
-                                Sort(SortField("logLongTimestamp", SortField.Type.LONG, true))
+                            val maxDocs = Integer.MAX_VALUE
+                            val batchSize = 10.0.pow(6).toInt()
+
+                            var topDocs = searcher.search(
+                                builtQuery, batchSize,
+                                Sort(SortField("logLongTimestamp", SortField.Type.LONG, true)),
+                                false
                             )
 
-
-                            topDocs.scoreDocs.forEach {
-                                val doc = searcher.storedFields().document(it.doc)
-                                yield(
-                                    SearchResult(
-                                        timestamp = doc.get("logStrTimestamp") ?: "",
-                                        logPath = doc.get("logPath") ?: "",
-                                        content = doc.get("content") ?: ""
+                            while (topDocs.totalHits.value>0) {
+                                topDocs.scoreDocs.forEach {
+                                    val doc = searcher.storedFields().document(it.doc)
+                                    yield(
+                                        SearchResult(
+                                            timestamp = doc.get("logStrTimestamp") ?: "",
+                                            logPath = doc.get("logPath") ?: "",
+                                            content = doc.get("content") ?: ""
+                                        )
                                     )
-                                )
+                                }
+
+                                topDocs = searcher.searchAfter(topDocs.scoreDocs.last(), builtQuery, batchSize,
+                                    Sort(SortField("logLongTimestamp", SortField.Type.LONG, true), false)
                             }
 
                         }

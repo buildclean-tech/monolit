@@ -57,28 +57,17 @@ class LogSearchController(
     @GetMapping(produces = [MediaType.TEXT_HTML_VALUE])
     fun searchPage(
         @RequestParam(required = false) watcherName: String?,
-        @RequestParam(required = false) filePath: String?,
         @RequestParam(required = false) contentQuery: String?,
         @RequestParam(required = false) timestampQuery: String?,
         @RequestParam(required = false) logPathQuery: String?,
         @RequestParam(required = false) operator: String?,
         @RequestParam(required = false) startDate: String?,
         @RequestParam(required = false) endDate: String?,
-        @RequestParam(required = false, defaultValue = "1") page: Int,
-        @RequestParam(required = false, defaultValue = "100000") pageSize: Int,
         @RequestParam(required = false, defaultValue = "UTC") timezone: String
     ): String {
+
         val watcherNames = getAllSSHLogWatcherNames()
-        val filePaths = if (!watcherName.isNullOrBlank()) getUniqueFilePaths(watcherName) else emptyList()
-
-        val totalResultsCount = if ((!contentQuery.isNullOrBlank() || !timestampQuery.isNullOrBlank() || !logPathQuery.isNullOrBlank()) && !watcherName.isNullOrBlank()) {
-            searchLogs(watcherName, contentQuery, timestampQuery, logPathQuery, operator ?: "AND", startDate, endDate, timezone, 1, Int.MAX_VALUE).size
-        } else 0
-
-        val limitedPageSize = minOf(pageSize, 100000)
-        val searchResults = if (totalResultsCount > 0 && !watcherName.isNullOrBlank()) {
-            searchLogs(watcherName, contentQuery, timestampQuery, logPathQuery, operator ?: "AND", startDate, endDate, timezone, page, limitedPageSize)
-        } else emptyList()
+        val (totalHitCount, resultSeq) = if (watcherName!=null) searchLogs(watcherName, contentQuery, timestampQuery, logPathQuery, operator ?: "AND", startDate, endDate, timezone) else 0 to emptySequence()
 
         return """
         <!DOCTYPE html>
@@ -128,13 +117,6 @@ class LogSearchController(
                                 ${watcherNames.joinToString("") { "<option value=\"$it\" ${if (it == watcherName) "selected" else ""}>${it}</option>" }}
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label for="filePath">File Path:</label>
-                            <select id="filePath" name="filePath">
-                                <option value="">All Files</option>
-                                ${filePaths.joinToString("") { "<option value=\"$it\" ${if (it == filePath) "selected" else ""}>${it}</option>" }}
-                            </select>
-                        </div>
                         <div class="form-group"><label for="contentQuery">Content Search:</label>
                             <input type="text" id="contentQuery" name="contentQuery" value="${contentQuery ?: ""}">
                         </div>
@@ -171,10 +153,10 @@ class LogSearchController(
                     <h2>Search Results</h2>
                     ${if ((contentQuery.isNullOrBlank() && timestampQuery.isNullOrBlank() && logPathQuery.isNullOrBlank()) || watcherName.isNullOrBlank()) {
             """<div class="no-results"><p>Please select a watcher and enter at least one search term.</p></div>"""
-        } else if (totalResultsCount == 0) {
+        } else if (totalHitCount == 0) {
             """<div class="no-results"><p>No results found.</p></div>"""
         } else {
-            searchResults.joinToString("\n") { result ->
+            resultSeq.joinToString("\n") { result ->
                 """<div class="log-entry"><div class="log-entry-header"><strong>${result.timestamp}</strong> | ${result.logPath}</div><div class="log-entry-content">${result.content}</div></div>"""
             }
         }}
@@ -200,13 +182,16 @@ class LogSearchController(
         response.contentType = "text/plain"
         response.setHeader("Content-Disposition", "attachment; filename=\"logs.txt\"")
 
-        val writer = response.writer
-        val results = searchLogs(watcherName, contentQuery, timestampQuery, logPathQuery, operator ?: "AND", startDate, endDate, timezone, 1, Int.MAX_VALUE)
+        val results = searchLogs(watcherName, contentQuery, timestampQuery, logPathQuery, operator ?: "AND", startDate, endDate, timezone)
 
-        results.forEach { r ->
-            writer.write("${r.timestamp} | ${r.logPath} | ${r.content}\n")
+        response.writer.buffered().use { writer ->
+            writer.write("contentQuery=${contentQuery}-timestampQuery=${timestampQuery}-logPathQuery=${logPathQuery}-operator=${operator}-startDate=${startDate}-endDate=${endDate}-timezone=${timezone}\n")
+            writer.write("Total Results: ${results.first}\n")
+            writer.write("\n")
+            results.second.forEach {
+                writer.write("${it.timestamp} | ${it.logPath}\n${it.content}\n\n")
+           }
         }
-        writer.flush()
     }
 
     private data class SearchResult(val timestamp: String, val logPath: String, val content: String)
@@ -219,67 +204,88 @@ class LogSearchController(
         operator: String,
         startDate: String?,
         endDate: String?,
-        timezone: String,
-        page: Int,
-        pageSize: Int
-    ): List<SearchResult> {
+        timezone: String
+    ): Pair<Int, Sequence<SearchResult>>{
         val results = mutableListOf<SearchResult>()
         try {
             val indexDir = luceneIngestionService.getBaseIndexDir().resolve(watcherName)
-            if (!Files.exists(indexDir)) return emptyList()
+            if (!Files.exists(indexDir)) return Pair(0, emptySequence())
+            val analyzer = luceneIngestionService.getAnalyzer()
+            val queryBuilder = BooleanQuery.Builder()
+            val booleanOperator = if (operator.equals("OR", true)) BooleanClause.Occur.SHOULD else BooleanClause.Occur.MUST
 
-            FSDirectory.open(indexDir).use { directory ->
+            if (!contentQuery.isNullOrBlank()) {
+                queryBuilder.add(QueryParser("content", analyzer).parse(contentQuery.trim()), booleanOperator)
+            }
+            if (!timestampQuery.isNullOrBlank()) {
+                val tq = timestampQuery.trim()
+                queryBuilder.add(if (tq.contains("*") || tq.contains("?")) WildcardQuery(Term("logStrTimestamp", tq)) else TermQuery(Term("logStrTimestamp", tq)), booleanOperator)
+            }
+            if (!logPathQuery.isNullOrBlank()) {
+                val lpq = logPathQuery.trim()
+                queryBuilder.add(if (lpq.contains("*") || lpq.contains("?")) WildcardQuery(Term("logPath", lpq)) else TermQuery(Term("logPath", lpq)), booleanOperator)
+            }
+            if (!startDate.isNullOrBlank() || !endDate.isNullOrBlank()) {
+                val timeZone = ZoneId.of(timezone)
+                var startTs = Long.MIN_VALUE
+                var endTs = Long.MAX_VALUE
+                if (!startDate.isNullOrBlank()) startTs = LocalDateTime.parse(startDate, DateTimeFormatter.ISO_LOCAL_DATE_TIME).atZone(timeZone).toInstant().toEpochMilli()
+                if (!endDate.isNullOrBlank()) endTs = LocalDateTime.parse(endDate, DateTimeFormatter.ISO_LOCAL_DATE_TIME).atZone(timeZone).toInstant().toEpochMilli()
+                queryBuilder.add(LongPoint.newRangeQuery("logLongTimestamp", startTs, endTs), BooleanClause.Occur.MUST)
+            }
+
+            val builtQuery = queryBuilder.build()
+
+            val hitCount = FSDirectory.open(indexDir).use { directory ->
+
                 if (DirectoryReader.indexExists(directory)) {
-                    DirectoryReader.open(directory).use { reader ->
+                    return@use DirectoryReader.open(directory).use { reader ->
+
                         val searcher = IndexSearcher(reader)
-                        val analyzer = luceneIngestionService.getAnalyzer()
-                        val queryBuilder = BooleanQuery.Builder()
-                        val booleanOperator = if (operator.equals("OR", true)) BooleanClause.Occur.SHOULD else BooleanClause.Occur.MUST
+                        val hitCount = searcher.count(builtQuery)
 
-                        if (!contentQuery.isNullOrBlank()) {
-                            queryBuilder.add(QueryParser("content", analyzer).parse(contentQuery.trim()), booleanOperator)
-                        }
-                        if (!timestampQuery.isNullOrBlank()) {
-                            val tq = timestampQuery.trim()
-                            queryBuilder.add(if (tq.contains("*") || tq.contains("?")) WildcardQuery(Term("logStrTimestamp", tq)) else TermQuery(Term("logStrTimestamp", tq)), booleanOperator)
-                        }
-                        if (!logPathQuery.isNullOrBlank()) {
-                            val lpq = logPathQuery.trim()
-                            queryBuilder.add(if (lpq.contains("*") || lpq.contains("?")) WildcardQuery(Term("logPath", lpq)) else TermQuery(Term("logPath", lpq)), booleanOperator)
-                        }
-                        if (!startDate.isNullOrBlank() || !endDate.isNullOrBlank()) {
-                            val timeZone = ZoneId.of(timezone)
-                            var startTs = Long.MIN_VALUE
-                            var endTs = Long.MAX_VALUE
-                            if (!startDate.isNullOrBlank()) startTs = LocalDateTime.parse(startDate, DateTimeFormatter.ISO_LOCAL_DATE_TIME).atZone(timeZone).toInstant().toEpochMilli()
-                            if (!endDate.isNullOrBlank()) endTs = LocalDateTime.parse(endDate, DateTimeFormatter.ISO_LOCAL_DATE_TIME).atZone(timeZone).toInstant().toEpochMilli()
-                            queryBuilder.add(LongPoint.newRangeQuery("logLongTimestamp", startTs, endTs), BooleanClause.Occur.MUST)
-                        }
+                        return@use hitCount
+                    }
+                }
+                else
+                    return@use 0
+            }
 
-                        if (queryBuilder.build().clauses().isEmpty()) return emptyList()
+            val searchSequence = sequence {
+                FSDirectory.open(indexDir).use { directory ->
 
-                        val query = queryBuilder.build()
-                        val startIndex = (page - 1) * pageSize
-                        val topDocs = searcher.search(query, startIndex + pageSize)
-                        val endIndex = minOf(startIndex + pageSize, topDocs.totalHits.value.toInt())
+                    if (DirectoryReader.indexExists(directory)) {
+                        return@use DirectoryReader.open(directory).use { reader ->
 
-                        for (i in startIndex until endIndex) {
-                            if (i < topDocs.scoreDocs.size) {
-                                val doc = searcher.doc(topDocs.scoreDocs[i].doc)
-                                results.add(SearchResult(
-                                    timestamp = doc.get("logStrTimestamp") ?: "",
-                                    logPath = doc.get("logPath") ?: "",
-                                    content = doc.get("content") ?: ""
-                                ))
+                            val searcher = IndexSearcher(reader)
+                            val topDocs = searcher.search(
+                                builtQuery, Integer.MAX_VALUE,
+                                Sort(SortField("logLongTimestamp", SortField.Type.LONG, true))
+                            )
+
+
+                            topDocs.scoreDocs.forEach {
+                                val doc = searcher.storedFields().document(it.doc)
+                                yield(
+                                    SearchResult(
+                                        timestamp = doc.get("logStrTimestamp") ?: "",
+                                        logPath = doc.get("logPath") ?: "",
+                                        content = doc.get("content") ?: ""
+                                    )
+                                )
                             }
+
                         }
                     }
                 }
             }
+
+            return Pair(hitCount, searchSequence)
+
         } catch (e: Exception) {
             println("Error searching logs: ${e.message}")
             e.printStackTrace()
+            throw e
         }
-        return results
     }
 }

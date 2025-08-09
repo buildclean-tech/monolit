@@ -63,19 +63,17 @@ class LogSearchControllerTest {
         // Configure the mock LuceneIngestionService
         `when`(luceneIngestionService.getBaseIndexDir()).thenReturn(indexDir)
         
-        // Get access to the private searchLogs method using reflection
+        // Get access to the searchLogs method using reflection
         searchLogsMethod = LogSearchController::class.java.getDeclaredMethod(
             "searchLogs",
-            String::class.java,
-            String::class.java,
-            String::class.java,
-            String::class.java,
-            String::class.java,
-            String::class.java,
-            String::class.java,
-            String::class.java,
-            Int::class.java,
-            Int::class.java
+            String::class.java,  // watcherName
+            String::class.java,  // contentQuery
+            String::class.java,  // timestampQuery
+            String::class.java,  // logPathQuery
+            String::class.java,  // operator
+            String::class.java,  // startDate
+            String::class.java,  // endDate
+            String::class.java   // timezone
         )
         searchLogsMethod.isAccessible = true
     }
@@ -142,8 +140,8 @@ class LogSearchControllerTest {
         )
         createTestIndex(watcherName, testDocuments)
         
-        // Invoke the private searchLogs method
-        val results = searchLogsMethod.invoke(
+        // Invoke the searchLogs method
+        val searchResult = searchLogsMethod.invoke(
             controller,
             watcherName,
             null,
@@ -152,10 +150,11 @@ class LogSearchControllerTest {
             null,
             "AND",
             null,
-            null,
-            1,
-            10
-        ) as List<*>
+            null
+        ) as Pair<*, *>
+        
+        val hitCount = searchResult.first as Int
+        val results = (searchResult.second as Sequence<*>).toList()
         
         // Verify results
         assert(results.size == 1)
@@ -199,8 +198,8 @@ class LogSearchControllerTest {
         )
         createTestIndex(watcherName, testDocuments)
         
-        // Invoke the private searchLogs method
-        val results = searchLogsMethod.invoke(
+        // Invoke the searchLogs method
+        val searchResult = searchLogsMethod.invoke(
             controller,
             watcherName,
             null,
@@ -209,10 +208,11 @@ class LogSearchControllerTest {
             null,
             "AND",
             null,
-            null,
-            1,
-            10
-        ) as List<*>
+            null
+        ) as Pair<*, *>
+        
+        val hitCount = searchResult.first as Int
+        val results = (searchResult.second as Sequence<*>).toList()
         
         // Verify results
         assert(results.size == 1)
@@ -243,8 +243,8 @@ class LogSearchControllerTest {
         )
         createTestIndex(watcherName, testDocuments)
         
-        // Invoke the private searchLogs method
-        val results = searchLogsMethod.invoke(
+        // Invoke the searchLogs method
+        val searchResult = searchLogsMethod.invoke(
             controller,
             watcherName,
             null,
@@ -253,10 +253,11 @@ class LogSearchControllerTest {
             "system",
             "AND",
             null,
-            null,
-            1,
-            10
-        ) as List<*>
+            null
+        ) as Pair<*, *>
+        
+        val hitCount = searchResult.first as Int
+        val results = (searchResult.second as Sequence<*>).toList()
         
         // Verify results
         assert(results.size == 1)
@@ -287,8 +288,8 @@ class LogSearchControllerTest {
         )
         createTestIndex(watcherName, testDocuments)
         
-        // Invoke the private searchLogs method with OR operator
-        val results = searchLogsMethod.invoke(
+        // Invoke the searchLogs method with OR operator
+        val searchResult = searchLogsMethod.invoke(
             controller,
             watcherName,
             null,
@@ -297,10 +298,11 @@ class LogSearchControllerTest {
             "system",
             "OR",
             null,
-            null,
-            1,
-            10
-        ) as List<*>
+            null
+        ) as Pair<*, *>
+        
+        val hitCount = searchResult.first as Int
+        val results = (searchResult.second as Sequence<*>).toList()
         
         // Verify results - should match both documents
         assert(results.size == 2)
@@ -332,8 +334,8 @@ class LogSearchControllerTest {
         )
         createTestIndex(watcherName, testDocuments)
         
-        // Invoke the private searchLogs method with AND operator
-        val results = searchLogsMethod.invoke(
+        // Invoke the searchLogs method with AND operator
+        val searchResult = searchLogsMethod.invoke(
             controller,
             watcherName,
             null,
@@ -342,10 +344,11 @@ class LogSearchControllerTest {
             "combined",
             "AND",
             null,
-            null,
-            1,
-            10
-        ) as List<*>
+            null
+        ) as Pair<*, *>
+        
+        val hitCount = searchResult.first as Int
+        val results = (searchResult.second as Sequence<*>).toList()
         
         // Verify results - should match only the document that has both "error" and "combined"
         assert(results.size == 1)
@@ -379,8 +382,8 @@ class LogSearchControllerTest {
         )
         createTestIndex(watcherName, testDocuments)
         
-        // Invoke the private searchLogs method with specific filePath
-        val results = searchLogsMethod.invoke(
+        // Invoke the searchLogs method with specific filePath
+        val searchResult = searchLogsMethod.invoke(
             controller,
             watcherName,
             "/logs/app.log",
@@ -389,10 +392,11 @@ class LogSearchControllerTest {
             null,
             "AND",
             null,
-            null,
-            1,
-            10
-        ) as List<*>
+            null
+        ) as Pair<*, *>
+        
+        val hitCount = searchResult.first as Int
+        val results = (searchResult.second as Sequence<*>).toList()
         
         // Verify results
         assert(results.size == 1)
@@ -433,35 +437,26 @@ class LogSearchControllerTest {
         )
         createTestIndex(watcherName, testDocuments)
         
-        // Invoke the private searchLogs method with pagination - 2 items per page
-        // Using an empty string for content query to match all documents
-        val page1Results = searchLogsMethod.invoke(
+        // Invoke the searchLogs method - we'll handle pagination in the application code
+        // Using "entry" for content query to match all our test documents
+        val searchResult = searchLogsMethod.invoke(
             controller,
             watcherName,
             null,
-            "entry",  // This should match all our test documents
+            "entry",
             null,
             null,
             "AND",
             null,
-            null,
-            1,
-            2
-        ) as List<*>
+            null
+        ) as Pair<*, *>
         
-        val page2Results = searchLogsMethod.invoke(
-            controller,
-            watcherName,
-            null,
-            "entry",  // This should match all our test documents
-            null,
-            null,
-            "AND",
-            null,
-            null,
-            2,
-            2
-        ) as List<*>
+        val hitCount = searchResult.first as Int
+        val allResults = (searchResult.second as Sequence<*>).toList()
+        
+        // Since we can't use pagination parameters directly, we'll simulate pagination by taking slices
+        val page1Results = allResults.take(2)
+        val page2Results = allResults.drop(2).take(2)
         
         // Verify results - we should have 2 results per page
         assert(page1Results.size == 2) { "Expected 2 results on page 1, but got ${page1Results.size}" }
@@ -500,8 +495,8 @@ class LogSearchControllerTest {
         )
         createTestIndex(watcherName, testDocuments)
         
-        // Invoke the private searchLogs method with non-matching query
-        val results = searchLogsMethod.invoke(
+        // Invoke the searchLogs method with non-matching query
+        val searchResult = searchLogsMethod.invoke(
             controller,
             watcherName,
             null,
@@ -510,10 +505,11 @@ class LogSearchControllerTest {
             null,
             "AND",
             null,
-            null,
-            1,
-            10
-        ) as List<*>
+            null
+        ) as Pair<*, *>
+        
+        val hitCount = searchResult.first as Int
+        val results = (searchResult.second as Sequence<*>).toList()
         
         // Verify results
         assert(results.isEmpty())
@@ -524,8 +520,8 @@ class LogSearchControllerTest {
         // Create a controller instance with mocked dependencies
         val controller = createController()
         
-        // Invoke the private searchLogs method with non-existent watcher
-        val results = searchLogsMethod.invoke(
+        // Invoke the searchLogs method with non-existent watcher
+        val searchResult = searchLogsMethod.invoke(
             controller,
             "nonexistent-watcher",
             null,
@@ -534,10 +530,11 @@ class LogSearchControllerTest {
             null,
             "AND",
             null,
-            null,
-            1,
-            10
-        ) as List<*>
+            null
+        ) as Pair<*, *>
+        
+        val hitCount = searchResult.first as Int
+        val results = (searchResult.second as Sequence<*>).toList()
         
         // Verify results
         assert(results.isEmpty())
@@ -559,8 +556,8 @@ class LogSearchControllerTest {
         )
         createTestIndex(watcherName, testDocuments)
         
-        // Invoke the private searchLogs method with no search criteria
-        val results = searchLogsMethod.invoke(
+        // Invoke the searchLogs method with no search criteria
+        val searchResult = searchLogsMethod.invoke(
             controller,
             watcherName,
             null,
@@ -569,12 +566,57 @@ class LogSearchControllerTest {
             null,
             "AND",
             null,
-            null,
-            1,
-            10
-        ) as List<*>
+            null
+        ) as Pair<*, *>
+        
+        val hitCount = searchResult.first as Int
+        val results = (searchResult.second as Sequence<*>).toList()
         
         // Verify results
         assert(results.isEmpty())
+    }
+    
+    @Test
+    fun `searchPage displays total hit count in HTML when results are found`() {
+        // This test verifies that the HTML output includes the total hit count
+        // We'll use a standalone test that doesn't depend on the searchLogsMethod reflection
+        
+        // Create test index with sample documents
+        val watcherName = "test-watcher"
+        val testDocuments = listOf(
+            mapOf(
+                "content" to "This is a test log entry",
+                "logStrTimestamp" to "2025-08-01 12:00:00",
+                "logPath" to "/logs/app.log"
+            ),
+            mapOf(
+                "content" to "Another test log entry",
+                "logStrTimestamp" to "2025-08-01 12:05:00",
+                "logPath" to "/logs/app.log"
+            )
+        )
+        createTestIndex(watcherName, testDocuments)
+        
+        // Mock the database connection for getAllSSHLogWatcherNames
+        val connection = mock<Connection>()
+        val preparedStatement = mock<PreparedStatement>()
+        val resultSet = mock<ResultSet>()
+        
+        `when`(dataSource.connection).thenReturn(connection)
+        `when`(connection.prepareStatement(any())).thenReturn(preparedStatement)
+        `when`(preparedStatement.executeQuery()).thenReturn(resultSet)
+        `when`(resultSet.next()).thenReturn(true, false)
+        `when`(resultSet.getString("name")).thenReturn(watcherName)
+        
+        // Perform the request
+        mockMvc.perform(
+            get("/log-search")
+                .param("watcherName", watcherName)
+                .param("contentQuery", "test")
+                .param("operator", "AND")
+        )
+            .andExpect(status().isOk())
+            .andExpect(content().contentType(MediaType.TEXT_HTML_VALUE))
+            .andExpect(content().string(containsString("Search Results (Total: 2 hits)")))
     }
 }

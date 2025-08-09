@@ -151,7 +151,7 @@ class LogSearchController(
                     <div style="margin-bottom:5px;">
                         <a href="/log-search/download?watcherName=${watcherName ?: ""}&contentQuery=${contentQuery ?: ""}&timestampQuery=${timestampQuery ?: ""}&logPathQuery=${logPathQuery ?: ""}&operator=${operator ?: "AND"}&startDate=${startDate ?: ""}&endDate=${endDate ?: ""}&timezone=${timezone}">Download Results</a>
                     </div>
-                    <h2>Search Results</h2>
+                    <h2>Search Results ${if (totalHitCount > 0) "(Total: $totalHitCount hits)" else ""}</h2>
                     ${if ((contentQuery.isNullOrBlank() && timestampQuery.isNullOrBlank() && logPathQuery.isNullOrBlank()) || watcherName.isNullOrBlank()) {
             """<div class="no-results"><p>Please select a watcher and enter at least one search term.</p></div>"""
         } else if (totalHitCount == 0) {

@@ -195,9 +195,9 @@ class LogSearchController(
         }
     }
 
-    private data class SearchResult(val timestamp: String, val logPath: String, val content: String)
+    data class SearchResult(val timestamp: String, val logPath: String, val content: String)
 
-    private fun searchLogs(
+    fun searchLogs(
         watcherName: String,
         contentQuery: String?,
         timestampQuery: String?,
@@ -259,7 +259,7 @@ class LogSearchController(
                         return@use DirectoryReader.open(directory).use { reader ->
 
                             val searcher = IndexSearcher(reader)
-                            val maxDocs = Integer.MAX_VALUE
+                            var maxDocs = Integer.MAX_VALUE
                             val batchSize = 10.0.pow(6).toInt()
 
                             var topDocs = searcher.search(
@@ -268,9 +268,10 @@ class LogSearchController(
                                 false
                             )
 
-                            while (topDocs.totalHits.value>0) {
+                            while (topDocs.totalHits.value>0 && maxDocs>0) {
                                 topDocs.scoreDocs.forEach {
                                     val doc = searcher.storedFields().document(it.doc)
+                                    if(--maxDocs>0)
                                     yield(
                                         SearchResult(
                                             timestamp = doc.get("logStrTimestamp") ?: "",
@@ -279,11 +280,16 @@ class LogSearchController(
                                         )
                                     )
                                 }
-
-                                topDocs = searcher.searchAfter(topDocs.scoreDocs.last(), builtQuery, batchSize,
-                                    Sort(SortField("logLongTimestamp", SortField.Type.LONG, true), false)
+                                
+                                // Only continue if we have results
+                                if (topDocs.scoreDocs.isNotEmpty()) {
+                                    topDocs = searcher.searchAfter(topDocs.scoreDocs.last(), builtQuery, batchSize,
+                                        Sort(SortField("logLongTimestamp", SortField.Type.LONG, true)), false)
+                                } else {
+                                    // Break the loop if no more results
+                                    break
+                                }
                             }
-
                         }
                     }
                 }

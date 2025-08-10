@@ -152,14 +152,18 @@ class SSHCommandRunner(private val sshSessionFactory: SSHSessionFactory) {
      * @param sshConfig The SSH configuration to use for the connection
      * @param filepath The full path to the file
      * @param byteOffset The byte offset from which to start reading the file
+     * @param byteCount The number of bytes to read from the offset (null means read to the end of file)
      * @return An InputStream for reading the file contents from the specified offset
      * @throws IOException If there's an error executing the command
      */
     @Throws(IOException::class)
-    fun getFileStreamFromOffset(sshConfig: SSHConfig, filepath: String, byteOffset: Long): InputStream {
+    fun getFileStreamFromOffset(sshConfig: SSHConfig, filepath: String, byteOffset: Long, byteCount: Long? = null): InputStream {
         // Validate inputs
         require(filepath.isNotBlank()) { "Filepath cannot be blank" }
         require(byteOffset >= 0) { "Byte offset must be non-negative" }
+        if (byteCount != null) {
+            require(byteCount > 0) { "Byte count must be positive" }
+        }
 
         // Get an SSH session
         val session = sshSessionFactory.getSession(sshConfig)
@@ -168,7 +172,9 @@ class SSHCommandRunner(private val sshSessionFactory: SSHSessionFactory) {
             // Create a command to read the file from the specified offset using dd
             // bs=1 sets the block size to 1 byte
             // skip=$byteOffset skips the specified number of bytes from the beginning
-            val command = "dd if=\"${filepath.replace("\"", "\\\"")}\" bs=1 skip=$byteOffset 2>/dev/null"
+            // count=$byteCount limits the number of bytes to read (if specified)
+            val countParam = byteCount?.let { " count=$it" } ?: ""
+            val command = "dd if=\"${filepath.replace("\"", "\\\"")}\" bs=1 skip=$byteOffset${countParam} 2>/dev/null"
             val channel = session.createExecChannel(command)
             
             // Open the channel

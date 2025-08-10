@@ -476,4 +476,26 @@ class SSHCommandRunnerTest {
             assertEquals("", it.bufferedReader().use { it.readText() }, "Should return empty content for nonexistent file")
         }
     }
+    
+    @Test
+    fun `getFileStreamFromOffset should limit bytes read when byteCount is specified`() {
+        // Arrange
+        val testFilePath = toUnixPath(testFile1)
+        val content = "This is test file 1"
+        val offset = 5L // Start from the 6th byte (index 5)
+        val byteCount = 7L // Read only 7 bytes
+        val expectedContent = content.substring(offset.toInt(), (offset + byteCount).toInt()) // "is test"
+        
+        // Act
+        val inputStream = sshCommandRunner.getFileStreamFromOffset(
+            sshConfig = testConfig,
+            filepath = testFilePath,
+            byteOffset = offset,
+            byteCount = byteCount
+        )
+        
+        // Assert
+        val actualContent = inputStream.bufferedReader().use { it.readText() }
+        assertEquals(expectedContent, actualContent, "File content should be limited to specified byte count")
+    }
 }

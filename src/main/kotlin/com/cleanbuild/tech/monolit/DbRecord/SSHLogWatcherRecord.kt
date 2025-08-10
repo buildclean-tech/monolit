@@ -19,6 +19,7 @@ data class SSHLogWatcherRecord(
     val consumptionStatus: String,
     val fileName: String,
     val noOfIndexedDocuments: Long,
+    val fileIdentityHash: String,
     val duplicatedFile: String? = null,
 ) {
     override fun toString(): String {
@@ -26,6 +27,7 @@ data class SSHLogWatcherRecord(
                "fullFilePath='$fullFilePath', fileSize=$fileSize, cTime=$cTime, " +
                "fileHash='$fileHash', createdTime=$createdTime, updatedTime=$updatedTime, " +
                "consumptionStatus='$consumptionStatus', duplicatedFile=${duplicatedFile?.let { "'$it'" } ?: "null"}, " +
-               "fileName=${fileName?.let { "'$it'" } ?: "null"}, noOfIndexedDocuments=$noOfIndexedDocuments)"
+               "fileName=${fileName?.let { "'$it'" } ?: "null"}, noOfIndexedDocuments=$noOfIndexedDocuments, " +
+               "fileIdentityHash=${fileIdentityHash?.let { "'$it'" } ?: "null"})"
     }
 }

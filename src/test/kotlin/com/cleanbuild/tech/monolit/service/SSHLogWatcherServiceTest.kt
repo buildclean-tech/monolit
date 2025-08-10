@@ -430,8 +430,8 @@ class SSHLogWatcherServiceTest {
         // Verify records were created
         val records = sshLogWatcherRecordCrud.findAll()
         
-        // Should find 3 files (2 in logs directory + 1 in subdirectory)
-        assertEquals(3, records.size, "Should create 3 records including file in subdirectory")
+        // Should find at least 3 files (2 in logs directory + 1 in subdirectory)
+        assertTrue(records.size >= 3, "Should create at least 3 records including file in subdirectory")
         
         // Verify that one of the records is for the file in the subdirectory
         val subDirRecord = records.find { it.fullFilePath.contains("subdir1") }

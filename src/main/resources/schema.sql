@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS SSHLogWatcherRecord (
     duplicatedFile VARCHAR(1024),
     fileName VARCHAR(255),
     noOfIndexedDocuments BIGINT,
+    fileIdentityHash VARCHAR(255),
     FOREIGN KEY (sshLogWatcherName) REFERENCES SSHLogWatcher(name)
 );
 

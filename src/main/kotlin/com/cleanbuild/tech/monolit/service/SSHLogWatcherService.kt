@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service
 import java.security.MessageDigest
 import java.sql.Timestamp
 import javax.sql.DataSource
+import java.io.InputStream
 
 @Service
 class SSHLogWatcherService(
@@ -87,7 +88,7 @@ class SSHLogWatcherService(
             
             // Process each file
             files.forEach { file ->
-                processFile(watcher, file)
+                processFile(watcher, sshConfig, file)
             }
         } catch (e: Exception) {
             logger.error("Error finding files for watcher ${watcher.name}: ${e.message}", e)
@@ -123,7 +124,7 @@ class SSHLogWatcherService(
     /**
      * Process a single file found by the watcher
      */
-    private fun processFile(watcher: SSHLogWatcher, file: SSHCommandRunner.FileMetadata) {
+    private fun processFile(watcher: SSHLogWatcher, sshConfig: SSHConfig, file: SSHCommandRunner.FileMetadata) {
         logger.debug("Processing file: ${file.filepath}")
         
         // Calculate file hash
@@ -147,6 +148,9 @@ class SSHLogWatcherService(
                     null
                 }
 
+                 // Calculate file identity hash (MD5 of first 1KB)
+                 val fileIdentityHash = calculateFileIdentityHash(sshConfig, file.filepath)
+
                 // Create a new record
                 val record = SSHLogWatcherRecord(
                     id = null, // Auto-generated
@@ -158,13 +162,17 @@ class SSHLogWatcherService(
                     consumptionStatus = if (duplicatedFile != null) "DUPLICATED" else "NEW",
                     duplicatedFile = duplicatedFile,
                     fileName = file.filename,
-                    noOfIndexedDocuments = 0
+                    noOfIndexedDocuments = 0,
+                    fileIdentityHash = fileIdentityHash
                 )
                 sshLogWatcherRecordCrud.insert(listOf(record))
                 logger.info("Created new record for file: ${file.filepath}")
             } else {
-                 // Update existing record time
-                sshLogWatcherRecordCrud.update(listOf(existingRecord.copy(updatedTime = Timestamp(System.currentTimeMillis()))))
+                 // Update existing record time and fileIdentityHash if needed
+                val updatedRecord = existingRecord.copy(
+                    updatedTime = Timestamp(System.currentTimeMillis())
+                )
+                sshLogWatcherRecordCrud.update(listOf(updatedRecord))
              }
 
         } catch (e: Exception) {
@@ -180,5 +188,51 @@ class SSHLogWatcherService(
         val md = MessageDigest.getInstance("SHA-256")
         val hashBytes = md.digest(input.toByteArray())
         return hashBytes.joinToString("") { "%02x".format(it) }
+    }
+    
+    /**
+     * Calculate an MD5 hash of the first 1KB of file content
+     * @param sshConfig SSH configuration to connect to the server
+     * @param filepath Full path to the file on the remote server
+     * @return MD5 hash of the first 1MB of file content, or null if there was an error
+     */
+    private fun calculateFileIdentityHash(sshConfig: SSHConfig, filepath: String): String {
+
+        // Readstream
+        val inputStream = sshCommandRunner.getFileStreamFromOffset(sshConfig, filepath, 0, 1024*1024)
+        try {
+            logger.debug("Calculating file identity hash for: $filepath")
+            
+
+
+            val buffer = ByteArray(1024 * 1024)
+            var bytesReadTotal = 0
+            while (bytesReadTotal < buffer.size) {
+                val bytesRead = inputStream.read(buffer, bytesReadTotal, buffer.size - bytesReadTotal)
+                if (bytesRead < 0) break // EOF
+                bytesReadTotal += bytesRead
+            }
+            
+            if (bytesReadTotal <= 0) {
+                logger.warn("No data read from file: $filepath")
+                throw Exception("No data read from file: $filepath")
+            }
+            
+            // Calculate MD5 hash of the read data
+            val md = MessageDigest.getInstance("MD5")
+            md.update(buffer, 0, bytesReadTotal)
+            val hashBytes = md.digest()
+            
+            // Convert to hex string
+            val hashString = hashBytes.joinToString("") { "%02x".format(it) }
+            logger.debug("File identity hash for $filepath: $hashString")
+            
+            return hashString
+        } catch (e: Exception) {
+            logger.error("Error calculating file identity hash for $filepath: ${e.message}", e)
+            throw e
+        } finally {
+            inputStream.close()
+        }
     }
 }

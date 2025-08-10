@@ -29,6 +29,8 @@ import org.apache.lucene.analysis.CharArraySet
 import org.apache.lucene.codecs.Codec
 import org.apache.lucene.codecs.StoredFieldsFormat
 import org.apache.lucene.codecs.lucene95.Lucene95Codec
+import java.io.InputStream
+import java.sql.Timestamp
 import kotlin.math.min
 
 @Service
@@ -177,7 +179,8 @@ open class LuceneIngestionService(
                         val updatedRecord = record.copy(
                             consumptionStatus = "INDEXED",
                             fileName = record.fileName,
-                            noOfIndexedDocuments = docsProcessed.toLong()
+                            noOfIndexedDocuments = docsProcessed.toLong(),
+                            updatedTime = Timestamp(System.currentTimeMillis())
                         )
 
                         indexWriter.commit()
@@ -195,7 +198,8 @@ open class LuceneIngestionService(
                         val updatedRecord = record.copy(
                             consumptionStatus = "ERROR",
                             fileName = record.fileName,
-                            noOfIndexedDocuments = 0L
+                            noOfIndexedDocuments = 0L,
+                            updatedTime = Timestamp(System.currentTimeMillis())
                         )
                         
                         // Add to records to update
@@ -252,14 +256,30 @@ open class LuceneIngestionService(
         useDeflateCompression: Boolean = false
     ): Int {
         try {
-            // Get file stream via SSH
-            val inputStream = sshCommandRunner.getFileStream(sshConfig, filePath)
-            
+
             // Check if the file is gzipped and wrap with GZIPInputStream if needed
             val processedInputStream = if (filePath.endsWith(".gz")) {
-                GZIPInputStream(inputStream)
+                GZIPInputStream(sshCommandRunner.getFileStream(sshConfig, filePath))
             } else {
-                inputStream
+
+                val previouslyIndexedSize = sshLogWatcherRecordCrud.findByColumnValues(
+                    whereColumns = mapOf(
+                        SSHLogWatcherRecord::fileIdentityHash to record.fileIdentityHash,
+                        SSHLogWatcherRecord::consumptionStatus to "INDEXED",
+                    )
+                ).maxByOrNull { it.updatedTime }?.fileSize ?:0
+
+                if(previouslyIndexedSize==0L)
+                    sshCommandRunner.getFileStream(sshConfig, filePath)
+
+                else if(record.fileSize>previouslyIndexedSize)
+                {
+                    sshCommandRunner.getFileStreamFromOffset(sshConfig, filePath, previouslyIndexedSize,record.fileSize - previouslyIndexedSize)
+                }
+
+                else
+                    sshCommandRunner.getFileStream(sshConfig, filePath)
+
             }
             
             val reader = BufferedReader(InputStreamReader(processedInputStream))
@@ -345,7 +365,7 @@ open class LuceneIngestionService(
         watcher: SSHLogWatcher
     ) {
         // Create content string for hashing (including timestamp and server)
-        val contentForHash = "${sshConfig.serverHost}|${sshConfig.name}${record.fileName}$logEntry|$timestamp|"
+        val contentForHash = "${sshConfig.serverHost}|${sshConfig.name}|${record.fileName}|$logEntry"
         
         // Generate MD5 hash as unique identifier
         val contentMD5Hash = generateMD5Hash(contentForHash)

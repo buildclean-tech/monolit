@@ -20,6 +20,10 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import javax.sql.DataSource
 import kotlin.math.pow
+import java.time.LocalDate
+// Add imports
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 @RestController
 @RequestMapping("/log-search")
@@ -29,8 +33,13 @@ class LogSearchController(
 ) {
     private val sshLogWatcherCrud = CRUDOperation(dataSource, SSHLogWatcher::class)
 
-    private fun getAllSSHLogWatcherNames(): List<String> =
-        sshLogWatcherCrud.findAll().map { it.name }
+    private fun getAllSSHLogWatcherNames(): List<SSHLogWatcher> =
+        sshLogWatcherCrud.findAll()
+   
+    val timezones =
+         ZoneId.getAvailableZoneIds()
+            .sorted()
+            .map { zoneId -> mapOf("id" to zoneId, "displayName" to zoneId) }
 
     private fun getUniqueFilePaths(watcherName: String): List<String> {
         val filePaths = mutableSetOf<String>()
@@ -64,17 +73,33 @@ class LogSearchController(
         @RequestParam(required = false) timestampQuery: String?,
         @RequestParam(required = false) logPathQuery: String?,
         @RequestParam(required = false) operator: String?,
-        @RequestParam(required = false) startDate: String?,
-        @RequestParam(required = false) endDate: String?,
-        @RequestParam(required = false, defaultValue = "UTC") timezone: String,
+        @RequestParam(required = false) startDate: String?,       // no defaultValue here
+        @RequestParam(required = false) endDate: String?,         // no defaultValue here
+        @RequestParam(required = false, defaultValue = "") timezone: String,
         response: HttpServletResponse
     ) {
         response.contentType = MediaType.TEXT_HTML_VALUE
         response.characterEncoding = "UTF-8"
+        val showOnlyTopResults = 10000
 
         BufferedWriter(OutputStreamWriter(response.outputStream, Charsets.UTF_8)).use { writer ->
 
-            val watcherNames = getAllSSHLogWatcherNames()
+            val logWatchers = getAllSSHLogWatcherNames()
+
+            val timezoneResolved =
+                if (!watcherName.isNullOrBlank() && timezone.isBlank()) {
+                    logWatchers.first { it.name == watcherName }.name
+                } else {
+                    timezone
+                }
+
+            val zone = runCatching { ZoneId.of(timezoneResolved.ifBlank { "UTC" }) }.getOrDefault(ZoneId.of("UTC"))
+            val today = LocalDate.now(zone)
+            val dtFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
+
+            val effectiveStartDate = startDate?.takeIf { it.isNotBlank() } ?: today.atStartOfDay().format(dtFmt)
+            val effectiveEndDate = endDate?.takeIf { it.isNotBlank() } ?: today.atTime(23, 59).format(dtFmt)
+
             val (totalHitCount, resultSeq) = if (watcherName != null) {
                 searchLogs(
                     watcherName,
@@ -82,11 +107,31 @@ class LogSearchController(
                     timestampQuery,
                     logPathQuery,
                     operator ?: "AND",
-                    startDate,
-                    endDate,
-                    timezone
+                    effectiveStartDate,
+                    effectiveEndDate,
+                    timezoneResolved,
+                    showOnlyTopResults
                 )
             } else 0 to emptySequence()
+
+            // Inside the controller class, add a small HTML-escape helper
+            fun escAttr(s: String?): String =
+                s?.replace("&", "&amp;")
+                  ?.replace("<", "&lt;")
+                  ?.replace(">", "&gt;")
+                  ?.replace("\"", "&quot;")
+                  ?.replace("'", "&#39;")
+                  ?: ""
+
+            // Before writing HTML, prepare safe values
+            val contentQueryEsc = escAttr(contentQuery)
+            val timestampQueryEsc = escAttr(timestampQuery)
+            val logPathQueryEsc = escAttr(logPathQuery)
+
+            // For the download link, URL-encode parameter values
+            val contentQueryUrl = URLEncoder.encode(contentQuery ?: "", StandardCharsets.UTF_8)
+            val timestampQueryUrl = URLEncoder.encode(timestampQuery ?: "", StandardCharsets.UTF_8)
+            val logPathQueryUrl = URLEncoder.encode(logPathQuery ?: "", StandardCharsets.UTF_8)
 
             // Write header
             writer.write(
@@ -97,6 +142,9 @@ class LogSearchController(
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Log Search</title>
+            <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+            <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
             <style>
                 body { font-family: Arial, sans-serif; line-height: 1.3; margin: 0; padding: 10px; color: #333; background-color: #fff; font-size: 12px; }
                 .container { max-width: 100%; margin: 0 auto; }
@@ -117,6 +165,18 @@ class LogSearchController(
                 .nav-links { margin-bottom: 6px; text-align: center; font-size: 11px; }
                 .nav-links a { margin-right: 8px; color: #3498db; text-decoration: none; }
                 .no-results { padding: 5px; background-color: #f8f9fa; border-radius: 2px; text-align: center; color: #7f8c8d; font-size: 11px; }
+
+                /* Fix overlap between timezone select (Select2) and Search button */
+                .form-group .select2-container { width: 100% !important; display: block; margin-bottom: 6px; }
+                .search-form form { display: flex; flex-direction: column; gap: 6px; }
+                .select2-container--default .select2-selection--single {
+                    height: 38px;
+                    padding: 5px;
+                    border: 1px solid #ddd;
+                }
+                .select2-container--default .select2-selection--single .select2-selection__arrow {
+                    height: 36px;
+                }
             </style>
         </head>
         <body>
@@ -137,21 +197,23 @@ class LogSearchController(
                                 <option value="">Select a watcher</option>
     """.trimIndent()
             )
-            watcherNames.forEach {
-                writer.write("<option value=\"$it\" ${if (it == watcherName) "selected" else ""}>$it</option>")
+            logWatchers.forEach {
+                writer.write("<option value=\"${it.name}\" ${if (it.name == watcherName) "selected" else ""}>${it.name}</option>")
             }
+
+            // Use the escaped values in inputs
             writer.write(
                 """
                             </select>
                         </div>
                         <div class="form-group"><label for="contentQuery">Content Search:</label>
-                            <input type="text" id="contentQuery" name="contentQuery" value="${contentQuery ?: ""}">
+                            <input type="text" id="contentQuery" name="contentQuery" value="$contentQueryEsc">
                         </div>
                         <div class="form-group"><label for="timestampQuery">Timestamp Search:</label>
-                            <input type="text" id="timestampQuery" name="timestampQuery" value="${timestampQuery ?: ""}">
+                            <input type="text" id="timestampQuery" name="timestampQuery" value="$timestampQueryEsc">
                         </div>
                         <div class="form-group"><label for="logPathQuery">Log Path Search:</label>
-                            <input type="text" id="logPathQuery" name="logPathQuery" value="${logPathQuery ?: ""}">
+                            <input type="text" id="logPathQuery" name="logPathQuery" value="$logPathQueryEsc">
                         </div>
                         <div class="form-group"><label for="operator">Search Operator:</label>
                             <select id="operator" name="operator">
@@ -159,32 +221,49 @@ class LogSearchController(
                                 <option value="OR" ${if (operator == "OR") "selected" else ""}>OR</option>
                             </select>
                         </div>
+                        <div class="form-group">
+                            <label for="timezone">Timezone:</label>
+                                <select id="timezone" name="timezone" required class="timezone-select">
+                                    ${timezones.joinToString("\n") { 
+                                        """<option value="${it["id"]}" ${if (it["id"] == timezone) "selected" else ""}>${it["displayName"]}</option>""" 
+                                    }}
+                                </select>
+                                <script>
+                                    ${'$'}('.timezone-select').select2({
+                                    });
+                                </script>
+                        </div>
                         <div class="form-group" style="display: flex; gap: 5px;">
                             <div style="flex: 1;"><label for="startDate">Start Date:</label>
-                                <input type="datetime-local" id="startDate" name="startDate" value="${startDate ?: ""}">
+                                <input type="datetime-local" id="startDate" name="startDate" value="$effectiveStartDate">
                             </div>
                             <div style="flex: 1;"><label for="endDate">End Date:</label>
-                                <input type="datetime-local" id="endDate" name="endDate" value="${endDate ?: ""}">
+                                <input type="datetime-local" id="endDate" name="endDate" value="$effectiveEndDate">
                             </div>
                         </div>
-                        <div class="form-group"><label for="timezone">Timezone:</label>
-                            <input type="text" id="timezone" name="timezone" value="${timezone}">
+                        <div class="form-group">
+                            <button type="submit">Search</button>
                         </div>
-                        <button type="submit">Search</button>
                     </form>
                 </div>
                 <div class="search-results">
+    """.trimIndent()
+            )
+
+            // And the encoded values in the download link
+            writer.write(
+                """
                     <div style="margin-bottom:5px;">
-                        <a href="/log-search/download?watcherName=${watcherName ?: ""}&contentQuery=${contentQuery ?: ""}&timestampQuery=${timestampQuery ?: ""}&logPathQuery=${logPathQuery ?: ""}&operator=${operator ?: "AND"}&startDate=${startDate ?: ""}&endDate=${endDate ?: ""}&timezone=${timezone}">Download Results</a>
+                        <a href="/log-search/download?watcherName=${watcherName ?: ""}&contentQuery=$contentQueryUrl&timestampQuery=$timestampQueryUrl&logPathQuery=$logPathQueryUrl&operator=${operator ?: "AND"}&startDate=$effectiveStartDate&endDate=$effectiveEndDate&timezone=$timezoneResolved">Download Full ($totalHitCount) Results</a>
                     </div>
-                    <h2>Search Results ${if (totalHitCount > 0) "(Total: $totalHitCount hits)" else ""}</h2>
+                    <h2>Search Results ${if (totalHitCount > 0) "(Total: $totalHitCount hits but showing only top $showOnlyTopResults )" else ""}</h2>
     """.trimIndent()
             )
 
             writer.flush()
 
-            if ((contentQuery.isNullOrBlank() && timestampQuery.isNullOrBlank() && logPathQuery.isNullOrBlank()) || watcherName.isNullOrBlank()) {
-                writer.write("""<div class="no-results"><p>Please select a watcher and enter at least one search term.</p></div>""")
+            if (watcherName.isNullOrBlank()) {
+                writer.write("""<div class="no-results"><p>Please select a watcher.</p></div>""")
             } else if (totalHitCount == 0) {
                 writer.write("""<div class="no-results"><p>No results found.</p></div>""")
             } else {
@@ -222,23 +301,32 @@ class LogSearchController(
         @RequestParam(required = false) timestampQuery: String?,
         @RequestParam(required = false) logPathQuery: String?,
         @RequestParam(required = false) operator: String?,
-        @RequestParam(required = false) startDate: String?,
-        @RequestParam(required = false) endDate: String?,
+        @RequestParam(required = false) startDate: String?,   // no defaultValue here
+        @RequestParam(required = false) endDate: String?,     // no defaultValue here
         @RequestParam(required = false, defaultValue = "UTC") timezone: String,
         response: HttpServletResponse
     ) {
+        val zone = runCatching { ZoneId.of(timezone.ifBlank { "UTC" }) }.getOrDefault(ZoneId.of("UTC"))
+        val today = LocalDate.now(zone)
+        val dtFmt = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm")
+
+        val effectiveStartDate = startDate?.takeIf { it.isNotBlank() } ?: today.atStartOfDay().format(dtFmt)
+        val effectiveEndDate = endDate?.takeIf { it.isNotBlank() } ?: today.atTime(23, 59).format(dtFmt)
+
+        val results = searchLogs(
+            watcherName, contentQuery, timestampQuery, logPathQuery,
+            operator ?: "AND", effectiveStartDate, effectiveEndDate, timezone
+        )
+
         response.contentType = "text/plain"
         response.setHeader("Content-Disposition", "attachment; filename=\"logs.txt\"")
 
-        val results = searchLogs(watcherName, contentQuery, timestampQuery, logPathQuery, operator ?: "AND", startDate, endDate, timezone)
-
         response.writer.buffered().use { writer ->
-            writer.write("contentQuery=${contentQuery}-timestampQuery=${timestampQuery}-logPathQuery=${logPathQuery}-operator=${operator}-startDate=${startDate}-endDate=${endDate}-timezone=${timezone}\n")
-            writer.write("Total Results: ${results.first}\n")
-            writer.write("\n")
+            writer.write("watcherName=${watcherName}-contentQuery=${contentQuery}-timestampQuery=${timestampQuery}-logPathQuery=${logPathQuery}-operator=${operator}-startDate=${effectiveStartDate}-endDate=${effectiveEndDate}-timezone=${timezone}\n")
+            writer.write("Total Results: ${results.first}\n\n")
             results.second.forEach {
                 writer.write("${it.timestamp} | ${it.logPath}\n${it.content}\n\n")
-           }
+            }
         }
     }
 
@@ -252,7 +340,8 @@ class LogSearchController(
         operator: String,
         startDate: String?,
         endDate: String?,
-        timezone: String
+        timezone: String,
+        limitResults: Int = Integer.MAX_VALUE
     ): Pair<Int, Sequence<SearchResult>>{
         val results = mutableListOf<SearchResult>()
         try {
@@ -306,7 +395,7 @@ class LogSearchController(
                         return@use DirectoryReader.open(directory).use { reader ->
 
                             val searcher = IndexSearcher(reader)
-                            var maxDocs = Integer.MAX_VALUE
+                            var maxDocs = limitResults
                             val batchSize = 10.0.pow(6).toInt()
 
                             var topDocs = searcher.search(

@@ -73,7 +73,8 @@ class LogSearchControllerTest {
             String::class.java,  // operator
             String::class.java,  // startDate
             String::class.java,  // endDate
-            String::class.java   // timezone
+            String::class.java,  // timezone
+            Int::class.java      // limitResults
         )
         searchLogsMethod.isAccessible = true
     }
@@ -150,7 +151,9 @@ class LogSearchControllerTest {
             null,
             "AND",
             null,
-            null
+            null,
+            "UTC",
+            Int.MAX_VALUE
         ) as Pair<*, *>
         
         val hitCount = searchResult.first as Int
@@ -208,7 +211,9 @@ class LogSearchControllerTest {
             null,
             "AND",
             null,
-            null
+            null,
+            "UTC",
+            Int.MAX_VALUE
         ) as Pair<*, *>
         
         val hitCount = searchResult.first as Int
@@ -253,7 +258,9 @@ class LogSearchControllerTest {
             "system",
             "AND",
             null,
-            null
+            null,
+            "UTC",
+            Int.MAX_VALUE
         ) as Pair<*, *>
         
         val hitCount = searchResult.first as Int
@@ -298,7 +305,9 @@ class LogSearchControllerTest {
             "system",
             "OR",
             null,
-            null
+            null,
+            "UTC",
+            Int.MAX_VALUE
         ) as Pair<*, *>
         
         val hitCount = searchResult.first as Int
@@ -344,7 +353,9 @@ class LogSearchControllerTest {
             "combined",
             "AND",
             null,
-            null
+            null,
+            "UTC",
+            Int.MAX_VALUE
         ) as Pair<*, *>
         
         val hitCount = searchResult.first as Int
@@ -392,7 +403,9 @@ class LogSearchControllerTest {
             null,
             "AND",
             null,
-            null
+            null,
+            "UTC",
+            Int.MAX_VALUE
         ) as Pair<*, *>
         
         val hitCount = searchResult.first as Int
@@ -448,7 +461,9 @@ class LogSearchControllerTest {
             null,
             "AND",
             null,
-            null
+            null,
+            "UTC",
+            Int.MAX_VALUE
         ) as Pair<*, *>
         
         val hitCount = searchResult.first as Int
@@ -505,7 +520,9 @@ class LogSearchControllerTest {
             null,
             "AND",
             null,
-            null
+            null,
+            "UTC",
+            Int.MAX_VALUE
         ) as Pair<*, *>
         
         val hitCount = searchResult.first as Int
@@ -530,7 +547,8 @@ class LogSearchControllerTest {
             null,
             "AND",
             null,
-            null
+            null,
+            Int.MAX_VALUE
         ) as Pair<*, *>
         
         val hitCount = searchResult.first as Int
@@ -566,7 +584,9 @@ class LogSearchControllerTest {
             null,
             "AND",
             null,
-            null
+            null,
+            "UTC",
+            Int.MAX_VALUE
         ) as Pair<*, *>
         
         val hitCount = searchResult.first as Int
@@ -618,5 +638,59 @@ class LogSearchControllerTest {
             .andExpect(status().isOk())
             .andExpect(content().contentType(MediaType.TEXT_HTML_VALUE))
             .andExpect(content().string(containsString("Search Results (Total: 2 hits)")))
+    }
+    
+    @Test
+    fun `searchPage with stream parameter returns HTML content with streaming logs`() {
+        // Create test index with sample documents
+        val watcherName = "test-watcher"
+        val testDocuments = listOf(
+            mapOf(
+                "content" to "This is a test log entry",
+                "logStrTimestamp" to "2025-08-01 12:00:00",
+                "logPath" to "/logs/app.log"
+            ),
+            mapOf(
+                "content" to "Another test log entry",
+                "logStrTimestamp" to "2025-08-01 12:05:00",
+                "logPath" to "/logs/app.log"
+            )
+        )
+        createTestIndex(watcherName, testDocuments)
+        
+        // Mock the database connection
+        val connection = mock<Connection>()
+        val preparedStatement = mock<PreparedStatement>()
+        val resultSet = mock<ResultSet>()
+        
+        `when`(dataSource.connection).thenReturn(connection)
+        `when`(connection.prepareStatement(any())).thenReturn(preparedStatement)
+        `when`(preparedStatement.executeQuery()).thenReturn(resultSet)
+        `when`(resultSet.next()).thenReturn(true, false)
+        `when`(resultSet.getString("name")).thenReturn(watcherName)
+        
+        // Perform the request
+        mockMvc.perform(
+            get("/log-search")
+                .param("watcherName", watcherName)
+                .param("contentQuery", "test")
+                .param("operator", "AND")
+                .param("stream", "true")
+        )
+            .andExpect(status().isOk())
+            .andExpect(content().contentType(MediaType.TEXT_HTML_VALUE))
+            .andExpect(content().string(containsString("Streaming Logs")))
+            .andExpect(content().string(containsString("Total Results: 2")))
+            .andExpect(content().string(containsString("This is a test log entry")))
+            .andExpect(content().string(containsString("Another test log entry")))
+    }
+    
+    @Test
+    fun `getAllTimeZones returns list of timezones`() {
+        mockMvc.perform(get("/log-search/timezones"))
+            .andExpect(status().isOk())
+            .andExpect(content().contentType(MediaType.APPLICATION_JSON_VALUE))
+            .andExpect(jsonPath("$[0].id").exists())
+            .andExpect(jsonPath("$[0].displayName").exists())
     }
 }

@@ -145,6 +145,51 @@ class SSHCommandRunner(private val sshSessionFactory: SSHSessionFactory) {
             throw IOException("Failed to get file stream: ${e.message}", e)
         }
     }
+    
+    /**
+     * Gets an input stream for a file starting from a specific byte offset.
+     *
+     * @param sshConfig The SSH configuration to use for the connection
+     * @param filepath The full path to the file
+     * @param byteOffset The byte offset from which to start reading the file
+     * @return An InputStream for reading the file contents from the specified offset
+     * @throws IOException If there's an error executing the command
+     */
+    @Throws(IOException::class)
+    fun getFileStreamFromOffset(sshConfig: SSHConfig, filepath: String, byteOffset: Long): InputStream {
+        // Validate inputs
+        require(filepath.isNotBlank()) { "Filepath cannot be blank" }
+        require(byteOffset >= 0) { "Byte offset must be non-negative" }
+
+        // Get an SSH session
+        val session = sshSessionFactory.getSession(sshConfig)
+
+        try {
+            // Create a command to read the file from the specified offset using dd
+            // bs=1 sets the block size to 1 byte
+            // skip=$byteOffset skips the specified number of bytes from the beginning
+            val command = "dd if=\"${filepath.replace("\"", "\\\"")}\" bs=1 skip=$byteOffset 2>/dev/null"
+            val channel = session.createExecChannel(command)
+            
+            // Open the channel
+            val openFuture = channel.open().verify()
+            if (!openFuture.await(COMMAND_TIMEOUT, TimeUnit.SECONDS)) {
+                throw IOException("Timeout while opening channel for file: $filepath at offset $byteOffset")
+            }
+            
+            if (!openFuture.isOpened) {
+                throw IOException("Failed to open channel for file: $filepath at offset $byteOffset")
+            }
+            
+            // Return the input stream
+            // Note: The caller is responsible for closing this stream
+            return FileStreamWrapper(channel, session)
+        } catch (e: Exception) {
+            logger.error("Error getting file stream for $filepath at offset $byteOffset", e)
+            session.close()
+            throw IOException("Failed to get file stream from offset: ${e.message}", e)
+        }
+    }
 
     /**
      * Executes a command over SSH and returns the output.

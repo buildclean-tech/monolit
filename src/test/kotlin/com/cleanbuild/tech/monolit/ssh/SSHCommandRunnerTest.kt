@@ -385,4 +385,95 @@ class SSHCommandRunnerTest {
         // Clean up
         Files.deleteIfExists(testFilePath)
     }
+    
+    @Test
+    fun `getFileStreamFromOffset should return content of file from specified offset`() {
+        // Arrange
+        val testFilePath = toUnixPath(testFile1)
+        val content = "This is test file 1"
+        val offset = 5L // Start from the 6th byte (index 5)
+        val expectedContent = content.substring(offset.toInt()) // "is test file 1"
+        
+        // Act
+        val inputStream = sshCommandRunner.getFileStreamFromOffset(
+            sshConfig = testConfig,
+            filepath = testFilePath,
+            byteOffset = offset
+        )
+        
+        // Assert
+        val actualContent = inputStream.bufferedReader().use { it.readText() }
+        assertEquals(expectedContent, actualContent, "File content from offset should match")
+    }
+    
+    @Test
+    fun `getFileStreamFromOffset should return empty content when offset is at end of file`() {
+        // Arrange
+        val testFilePath = toUnixPath(testFile1)
+        val content = "This is test file 1"
+        val offset = content.length.toLong() // Offset at the end of the file
+        
+        // Act
+        val inputStream = sshCommandRunner.getFileStreamFromOffset(
+            sshConfig = testConfig,
+            filepath = testFilePath,
+            byteOffset = offset
+        )
+        
+        // Assert
+        val actualContent = inputStream.bufferedReader().use { it.readText() }
+        assertEquals("", actualContent, "Should return empty content when offset is at end of file")
+    }
+    
+    @Test
+    fun `getFileStreamFromOffset should handle files with spaces in name`() {
+        // Arrange
+        val testFilePath = toUnixPath(testFileWithSpaces)
+        val content = "This is a test file with spaces in the name"
+        val offset = 10L
+        val expectedContent = content.substring(offset.toInt())
+        
+        // Act
+        val inputStream = sshCommandRunner.getFileStreamFromOffset(
+            sshConfig = testConfig,
+            filepath = testFilePath,
+            byteOffset = offset
+        )
+        
+        // Assert
+        val actualContent = inputStream.bufferedReader().use { it.readText() }
+        assertEquals(expectedContent, actualContent, "File content from offset should match for file with spaces")
+    }
+    
+    @Test
+    fun `getFileStreamFromOffset should throw exception for invalid offset`() {
+        // Arrange
+        val testFilePath = toUnixPath(testFile1)
+        val invalidOffset = -1L
+        
+        // Act & Assert
+        org.junit.jupiter.api.assertThrows<IllegalArgumentException> {
+            sshCommandRunner.getFileStreamFromOffset(
+                sshConfig = testConfig,
+                filepath = testFilePath,
+                byteOffset = invalidOffset
+            )
+        }
+    }
+    
+    @Test
+    fun `getFileStreamFromOffset should handle nonexistent file`() {
+        // Arrange
+        val nonexistentFilePath = toUnixPath(testDir) + "/nonexistent.txt"
+        val offset = 0L
+        
+        // Act & Assert
+        sshCommandRunner.getFileStreamFromOffset(
+            sshConfig = testConfig,
+            filepath = nonexistentFilePath,
+            byteOffset = offset
+        ).use {
+            assertEquals("", it.bufferedReader().use { it.readText() }, "Should return empty content for nonexistent file")
+        }
+    }
 }

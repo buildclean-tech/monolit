@@ -71,7 +71,7 @@ open class LuceneIngestionService(
      * Each watcher's records are processed in parallel using coroutines
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    fun ingestRecords(useDeflateCompression: Boolean = false) {
+    fun ingestRecords(useDeflateCompression: Boolean = true) {
         logger.info("Starting ingestion of SSHLogWatcherRecords")
         
         try {
@@ -360,7 +360,6 @@ open class LuceneIngestionService(
         // Store original values for retrieval but index lowercase versions for case-insensitive search
         doc.add(StringField("md5Id", contentMD5Hash, Field.Store.YES))
         doc.add(StringField("logStrTimestamp", timestamp, Field.Store.YES))
-        doc.add(StringField("javaStrTimeZoneId", watcher.javaTimeZoneId, Field.Store.YES))
 
         doc.add(LongPoint("logLongTimestamp", timestampLong))                // for range/exact queries
         doc.add(NumericDocValuesField("logLongTimestamp", timestampLong))   // for sorting
